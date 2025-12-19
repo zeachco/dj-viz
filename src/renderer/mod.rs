@@ -55,7 +55,7 @@ impl Resolution {
     }
 }
 
-const COOLDOWN_FRAMES: u32 = 120; // ~2 seconds at 60fps
+const COOLDOWN_FRAMES: u32 = 45; // ~0.75 seconds at 60fps (more responsive)
 const NOTIFICATION_FRAMES: u32 = 180; // ~3 seconds at 60fps
 
 /// Main renderer that manages the visualization pipeline and cycling

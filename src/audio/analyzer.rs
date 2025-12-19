@@ -232,11 +232,11 @@ impl AudioAnalyzer {
         let long_energy: f32 = self.energy_history.iter().sum::<f32>() / history_size as f32;
         let long_freq: f32 = self.freq_ratio_history.iter().sum::<f32>() / history_size as f32;
 
-        // Detect state transitions
-        let is_high_energy = recent_energy > long_energy * 1.3;
-        let is_high_freq = recent_freq > long_freq + 0.15;
+        // Detect state transitions (lower thresholds = more sensitive)
+        let is_high_energy = recent_energy > long_energy * 1.15;
+        let is_high_freq = recent_freq > long_freq + 0.08;
 
-        let threshold = 0.3;
+        let threshold = 0.15;
         let energy_diff = (recent_energy - long_energy).abs();
         let freq_diff = (recent_freq - long_freq).abs();
 

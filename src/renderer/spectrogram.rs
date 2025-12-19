@@ -4,9 +4,9 @@ use rand::Rng;
 
 use crate::audio::{AudioAnalysis, NUM_BANDS};
 
-const HISTORY_SIZE: usize = if cfg!(debug_assertions) { 100 } else { 512 };
+const HISTORY_SIZE: usize = if cfg!(debug_assertions) { 50 } else { 200 };
 /// Number of visual bins to display (interpolated from NUM_BANDS)
-const DISPLAY_BINS: usize = if cfg!(debug_assertions) { 32 } else { 64 };
+const DISPLAY_BINS: usize = if cfg!(debug_assertions) { 16 } else { 24 };
 
 pub struct Spectrogram {
     /// History of band values for scrolling display
@@ -16,6 +16,12 @@ pub struct Spectrogram {
     shake_y: f32,
     /// Beat-reactive rotation
     rotation: f32,
+    /// Current music intensity (for alpha modulation)
+    intensity: f32,
+    /// Current bass level (for border effect)
+    bass: f32,
+    /// Frame counter for time-based effects
+    frame_count: u32,
 }
 
 impl Spectrogram {
@@ -25,6 +31,9 @@ impl Spectrogram {
             shake_x: 0.0,
             shake_y: 0.0,
             rotation: 0.0,
+            intensity: 0.0,
+            bass: 0.0,
+            frame_count: 0,
         }
     }
 
@@ -42,7 +51,75 @@ impl Spectrogram {
         bands[low_band] * (1.0 - t) + bands[high_band] * t
     }
 
-    fn magnitude_to_color(mag: f32) -> Srgba<u8> {
+    /// Calculate border width based on sin wave (15s period)
+    fn border_width(&self) -> f32 {
+        // Sin wave over 15 seconds (assuming 60fps)
+        let phase = self.frame_count as f32 * std::f32::consts::TAU / (15.0 * 60.0);
+        let sin_factor = (phase.sin() + 1.0) / 2.0; // 0 to 1
+        // Border width 1-5px based purely on sin wave
+        1.0 + sin_factor * 4.0
+    }
+
+    /// Get border color (90 degrees rotated hue, saturation based on intensity)
+    fn border_color(&self, main_color: Srgba<u8>) -> Srgba<u8> {
+        // Convert RGB to HSV, rotate hue by 90 degrees
+        let r = main_color.red as f32 / 255.0;
+        let g = main_color.green as f32 / 255.0;
+        let b = main_color.blue as f32 / 255.0;
+
+        let max = r.max(g).max(b);
+        let min = r.min(g).min(b);
+        let delta = max - min;
+
+        // Calculate hue
+        let hue = if delta == 0.0 {
+            0.0
+        } else if max == r {
+            60.0 * (((g - b) / delta) % 6.0)
+        } else if max == g {
+            60.0 * (((b - r) / delta) + 2.0)
+        } else {
+            60.0 * (((r - g) / delta) + 4.0)
+        };
+        let hue = if hue < 0.0 { hue + 360.0 } else { hue };
+
+        // Rotate by 90 degrees
+        let new_hue = (hue + 90.0) % 360.0;
+
+        // Saturation modulated by intensity (more intense = more saturated border)
+        let base_saturation = if max == 0.0 { 0.0 } else { delta / max };
+        let saturation = base_saturation * (0.3 + self.intensity * 0.7);
+        let value = max;
+
+        // Convert back to RGB
+        let c = value * saturation;
+        let x = c * (1.0 - ((new_hue / 60.0) % 2.0 - 1.0).abs());
+        let m = value - c;
+
+        let (r1, g1, b1) = if new_hue < 60.0 {
+            (c, x, 0.0)
+        } else if new_hue < 120.0 {
+            (x, c, 0.0)
+        } else if new_hue < 180.0 {
+            (0.0, c, x)
+        } else if new_hue < 240.0 {
+            (0.0, x, c)
+        } else if new_hue < 300.0 {
+            (x, 0.0, c)
+        } else {
+            (c, 0.0, x)
+        };
+
+        srgba(
+            ((r1 + m) * 255.0) as u8,
+            ((g1 + m) * 255.0) as u8,
+            ((b1 + m) * 255.0) as u8,
+            main_color.alpha,
+        )
+    }
+
+    /// Convert magnitude to color with intensity-based alpha
+    fn magnitude_to_color(&self, mag: f32) -> Srgba<u8> {
         let mag = mag.clamp(0.0, 1.0);
 
         // Heat map: black -> purple -> blue -> cyan -> green -> yellow -> red -> white
@@ -72,14 +149,24 @@ impl Spectrogram {
             (1.0, t, t)
         };
 
-        // Alpha scales with magnitude for transparency blending
-        let alpha = (mag * 200.0 + 55.0) as u8;
+        // Calculate saturation - colors near black/white are less saturated
+        let max_rgb = r.max(g).max(b);
+        let min_rgb = r.min(g).min(b);
+        let saturation = if max_rgb > 0.001 { (max_rgb - min_rgb) / max_rgb } else { 0.0 };
+
+        // Base alpha for desaturated colors scales with music intensity
+        // Quiet: white/black very transparent (5%), Loud: more visible (30%)
+        let base_alpha = 0.05 + self.intensity * 0.25;
+        // Saturated colors always more visible, plus intensity boost
+        let saturated_alpha = 0.35 + self.intensity * 0.15;
+
+        let alpha = base_alpha + saturation * (saturated_alpha - base_alpha);
 
         srgba(
             (r * 255.0) as u8,
             (g * 255.0) as u8,
             (b * 255.0) as u8,
-            alpha,
+            (alpha * 255.0) as u8,
         )
     }
 }
@@ -90,12 +177,21 @@ impl Visualization for Spectrogram {
         self.history.remove(0);
         self.history.push(analysis.bands);
 
+        // Smooth intensity tracking for alpha modulation
+        self.intensity = self.intensity * 0.9 + analysis.energy * 0.1;
+
+        // Track bass for border effect
+        self.bass = self.bass * 0.7 + analysis.bass * 0.3;
+
+        // Increment frame counter
+        self.frame_count = self.frame_count.wrapping_add(1);
+
         // Beat-reactive shake: trigger on bass hits
         if analysis.bass > 0.4 {
             let mut rng = rand::rng();
-            let intensity = analysis.bass * 15.0;
-            self.shake_x += rng.random_range(-1.0..1.0) * intensity;
-            self.shake_y += rng.random_range(-1.0..1.0) * intensity;
+            let shake_intensity = analysis.bass * 15.0;
+            self.shake_x += rng.random_range(-1.0..1.0) * shake_intensity;
+            self.shake_y += rng.random_range(-1.0..1.0) * shake_intensity;
             self.rotation += rng.random_range(-1.0..1.0) * analysis.bass * 0.03;
         }
 
@@ -106,10 +202,11 @@ impl Visualization for Spectrogram {
     }
 
     fn draw(&self, draw: &Draw, bounds: Rect) {
-        // Apply beat-reactive transform (shake + rotation)
+        // Apply beat-reactive transform (shake + rotation + slight zoom to hide edges)
         let draw = draw
             .x_y(self.shake_x, self.shake_y)
-            .rotate(self.rotation);
+            .rotate(self.rotation)
+            .scale(1.02);
 
         let w = bounds.w();
         let h = bounds.h();
@@ -141,14 +238,28 @@ impl Visualization for Spectrogram {
                 let column = &self.history[col_idx];
                 let x = bounds.right() - (i as f32 + 0.5) * col_width;
 
+                let border_w = self.border_width();
                 for bin_idx in 0..DISPLAY_BINS {
                     let magnitude = Self::interpolate_band(column, bin_idx);
                     let y = bounds.bottom() + (bin_idx as f32 + 0.5) * bin_size;
 
-                    let color = Self::magnitude_to_color(magnitude);
+                    let color = self.magnitude_to_color(magnitude);
+                    let border_color = self.border_color(color);
+                    let mut rng = rand::rng();
+                    // Gutter can reach up to 70% of each dimension
+                    let gutter_w = rng.random_range(1.0..(col_width * 0.7).max(2.0));
+                    let gutter_h = rng.random_range(1.0..(bin_size * 0.7).max(2.0));
+                    let rect_w = col_width - gutter_w;
+                    let rect_h = bin_size - gutter_h;
+                    // Draw border (larger rect behind)
                     draw.rect()
                         .x_y(x, y)
-                        .w_h(col_width - 2.0, bin_size - 2.0)
+                        .w_h(rect_w + border_w * 2.0, rect_h + border_w * 2.0)
+                        .color(border_color);
+                    // Draw main rect
+                    draw.rect()
+                        .x_y(x, y)
+                        .w_h(rect_w, rect_h)
                         .color(color);
                 }
             }
@@ -166,14 +277,27 @@ impl Visualization for Spectrogram {
                 let column = &self.history[col_idx];
                 let y = bounds.bottom() + (i as f32 + 0.5) * col_height;
 
+                let border_w = self.border_width();
                 for bin_idx in 0..DISPLAY_BINS {
                     let magnitude = Self::interpolate_band(column, bin_idx);
                     let x = bounds.left() + (bin_idx as f32 + 0.5) * bin_size;
 
-                    let color = Self::magnitude_to_color(magnitude);
+                    let color = self.magnitude_to_color(magnitude);
+                    let border_color = self.border_color(color);
+                    let mut rng = rand::rng();
+                    let gutter_w = rng.random_range(1.0..(bin_size * 0.7).max(2.0));
+                    let gutter_h = rng.random_range(1.0..(col_height * 0.7).max(2.0));
+                    let rect_w = bin_size - gutter_w;
+                    let rect_h = col_height - gutter_h;
+                    // Draw border
                     draw.rect()
                         .x_y(x, y)
-                        .w_h(bin_size - 2.0, col_height - 2.0)
+                        .w_h(rect_w + border_w * 2.0, rect_h + border_w * 2.0)
+                        .color(border_color);
+                    // Draw main rect
+                    draw.rect()
+                        .x_y(x, y)
+                        .w_h(rect_w, rect_h)
                         .color(color);
                 }
             }
@@ -191,14 +315,27 @@ impl Visualization for Spectrogram {
                 let column = &self.history[col_idx];
                 let x = bounds.left() + (i as f32 + 0.5) * col_width;
 
+                let border_w = self.border_width();
                 for bin_idx in 0..DISPLAY_BINS {
                     let magnitude = Self::interpolate_band(column, bin_idx);
                     let y = bounds.top() - (bin_idx as f32 + 0.5) * bin_size;
 
-                    let color = Self::magnitude_to_color(magnitude);
+                    let color = self.magnitude_to_color(magnitude);
+                    let border_color = self.border_color(color);
+                    let mut rng = rand::rng();
+                    let gutter_w = rng.random_range(1.0..(col_width * 0.7).max(2.0));
+                    let gutter_h = rng.random_range(1.0..(bin_size * 0.7).max(2.0));
+                    let rect_w = col_width - gutter_w;
+                    let rect_h = bin_size - gutter_h;
+                    // Draw border
                     draw.rect()
                         .x_y(x, y)
-                        .w_h(col_width - 2.0, bin_size - 2.0)
+                        .w_h(rect_w + border_w * 2.0, rect_h + border_w * 2.0)
+                        .color(border_color);
+                    // Draw main rect
+                    draw.rect()
+                        .x_y(x, y)
+                        .w_h(rect_w, rect_h)
                         .color(color);
                 }
             }
@@ -216,14 +353,27 @@ impl Visualization for Spectrogram {
                 let column = &self.history[col_idx];
                 let y = bounds.top() - (i as f32 + 0.5) * col_height;
 
+                let border_w = self.border_width();
                 for bin_idx in 0..DISPLAY_BINS {
                     let magnitude = Self::interpolate_band(column, bin_idx);
                     let x = bounds.right() - (bin_idx as f32 + 0.5) * bin_size;
 
-                    let color = Self::magnitude_to_color(magnitude);
+                    let color = self.magnitude_to_color(magnitude);
+                    let border_color = self.border_color(color);
+                    let mut rng = rand::rng();
+                    let gutter_w = rng.random_range(1.0..(bin_size * 0.7).max(2.0));
+                    let gutter_h = rng.random_range(1.0..(col_height * 0.7).max(2.0));
+                    let rect_w = bin_size - gutter_w;
+                    let rect_h = col_height - gutter_h;
+                    // Draw border
                     draw.rect()
                         .x_y(x, y)
-                        .w_h(bin_size - 2.0, col_height - 2.0)
+                        .w_h(rect_w + border_w * 2.0, rect_h + border_w * 2.0)
+                        .color(border_color);
+                    // Draw main rect
+                    draw.rect()
+                        .x_y(x, y)
+                        .w_h(rect_w, rect_h)
                         .color(color);
                 }
             }
