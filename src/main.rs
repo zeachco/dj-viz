@@ -4,8 +4,8 @@ mod utils;
 
 use nannou::prelude::*;
 use audio::{OutputCapture, SourcePipe};
-use renderer::{Renderer, Resolution};
-use utils::Config;
+use renderer::{FeedbackRenderer, Renderer, Resolution};
+use std::cell::RefCell;
 use std::env;
 
 fn main() {
@@ -28,6 +28,7 @@ struct Model {
     source: SourcePipe,
     renderer: Renderer,
     output_capture: OutputCapture,
+    feedback: RefCell<FeedbackRenderer>,
 }
 
 fn model(app: &App) -> Model {
@@ -36,18 +37,36 @@ fn model(app: &App) -> Model {
     let mut win = app.new_window()
         .view(view)
         .key_pressed(key_pressed)
+        .resized(resized)
         .size(resolution.width, resolution.height);
 
     if resolution.fullscreen {
         win = win.fullscreen();
     }
 
-    win.build().unwrap();
+    let window_id = win.build().unwrap();
+
+    // Get window for wgpu resources
+    let window = app.window(window_id).unwrap();
+    let device = window.device();
+    let queue = window.queue();
+    let size = window.inner_size_pixels();
+    let sample_count = window.msaa_samples();
+
+    // Create feedback renderer
+    let feedback = FeedbackRenderer::new(
+        device,
+        queue,
+        [size.0, size.1],
+        sample_count,
+        Frame::TEXTURE_FORMAT,
+    );
 
     Model {
         source: SourcePipe::new(),
         renderer: Renderer::with_cycling(),
         output_capture: OutputCapture::new(),
+        feedback: RefCell::new(feedback),
     }
 }
 
@@ -64,17 +83,48 @@ fn update(app: &App, model: &mut Model, _update: Update) {
 }
 
 fn view(app: &App, model: &Model, frame: Frame) {
-    let draw = app.draw();
+    let window = app.main_window();
+    let device = window.device();
+    let queue = window.queue();
     let bounds = app.window_rect();
 
+    // Create draw context for visualization
+    let draw = app.draw();
+    draw.background().color(BLACK);
     model.renderer.draw(&draw, bounds);
 
-    // Draw search overlay if active
-    if model.output_capture.search_active {
-        draw_search_overlay(&draw, bounds, &model.output_capture);
+    // Render through feedback buffer and output to frame
+    {
+        let mut feedback = model.feedback.borrow_mut();
+        feedback.render(
+            device,
+            queue,
+            &draw,
+            frame.texture_view(),
+            Frame::TEXTURE_FORMAT,
+            window.msaa_samples(),
+        );
     }
 
-    draw.to_frame(app, &frame).unwrap();
+    // Draw search overlay directly to frame (not through feedback)
+    if model.output_capture.search_active {
+        let overlay_draw = app.draw();
+        draw_search_overlay(&overlay_draw, bounds, &model.output_capture);
+        overlay_draw.to_frame(app, &frame).unwrap();
+    }
+}
+
+fn resized(app: &App, model: &mut Model, size: Vec2) {
+    let window = app.main_window();
+    let device = window.device();
+    let sample_count = window.msaa_samples();
+
+    model.feedback.borrow_mut().resize(
+        device,
+        [size.x as u32, size.y as u32],
+        sample_count,
+        Frame::TEXTURE_FORMAT,
+    );
 }
 
 fn draw_search_overlay(draw: &Draw, bounds: Rect, capture: &OutputCapture) {
@@ -98,15 +148,16 @@ fn draw_search_overlay(draw: &Draw, bounds: Rect, capture: &OutputCapture) {
         .w_h(overlay_width, overlay_height)
         .color(rgba(0.0, 0.0, 0.0, 0.85));
 
-    // Text starts at left edge of overlay
-    let text_left = bounds.left() + padding;
+    // Text box centered on screen, text left-justified within it
+    let text_box_width = bounds.w() - padding * 2.0;
+    let text_box_x = 0.0; // Center of screen
 
     // Search query line
     let query_y = overlay_y + overlay_height / 2.0 - padding - line_height / 2.0;
     let query_text = format!("Search: {}_", capture.query);
     draw.text(&query_text)
-        .xy(pt2(text_left, query_y))
-        .wh(pt2(bounds.w(), line_height).into())
+        .xy(pt2(text_box_x, query_y))
+        .wh(pt2(text_box_width, line_height).into())
         .left_justify()
         .no_line_wrap()
         .color(rgb(1.0, 1.0, 1.0))
@@ -115,7 +166,7 @@ fn draw_search_overlay(draw: &Draw, bounds: Rect, capture: &OutputCapture) {
     // Separator line
     let sep_y = query_y - line_height;
     draw.line()
-        .start(pt2(text_left, sep_y))
+        .start(pt2(bounds.left() + padding, sep_y))
         .end(pt2(bounds.right() - padding, sep_y))
         .color(rgba(1.0, 1.0, 1.0, 0.3))
         .weight(1.0);
@@ -135,8 +186,8 @@ fn draw_search_overlay(draw: &Draw, bounds: Rect, capture: &OutputCapture) {
         };
 
         draw.text(&text)
-            .xy(pt2(text_left, item_y))
-            .wh(pt2(bounds.w(), line_height).into())
+            .xy(pt2(text_box_x, item_y))
+            .wh(pt2(text_box_width, line_height).into())
             .left_justify()
             .no_line_wrap()
             .color(color)
@@ -148,8 +199,8 @@ fn draw_search_overlay(draw: &Draw, bounds: Rect, capture: &OutputCapture) {
         let more_y = sep_y - line_height * (max_visible as f32 + 1.0);
         let more_text = format!("  ... and {} more", capture.filtered.len() - max_visible);
         draw.text(&more_text)
-            .xy(pt2(text_left, more_y))
-            .wh(pt2(bounds.w(), line_height).into())
+            .xy(pt2(text_box_x, more_y))
+            .wh(pt2(text_box_width, line_height).into())
             .left_justify()
             .no_line_wrap()
             .color(rgba(1.0, 1.0, 1.0, 0.5))
@@ -180,29 +231,15 @@ fn key_pressed(app: &App, model: &mut Model, key: Key) {
                 model.output_capture.backspace();
             }
             Key::Return => {
-                if let Some((name, monitor, success)) = model.output_capture.select_and_connect() {
-                    // Save to config
-                    let mut config = Config::load();
-                    config.set_pw_link_target(&name);
-
-                    let msg = if success {
-                        // Refresh devices and switch to the monitor source
-                        if let Some(monitor_name) = monitor {
-                            model.source.refresh_devices();
-                            if let Some((dev_name, switched)) = model.source.select_device_by_name(&monitor_name) {
-                                if switched {
-                                    format!("Capturing: {}", name)
-                                } else {
-                                    format!("Connected {} (switch to {} failed)", name, dev_name)
-                                }
-                            } else {
-                                format!("Connected {} (monitor not found)", name)
-                            }
+                if let Some((name, idx)) = model.output_capture.select() {
+                    let msg = if let Some((_, success)) = model.source.select_device(idx) {
+                        if success {
+                            format!("[{}] {}", idx, name)
                         } else {
-                            format!("Selected: {}", name)
+                            format!("[{}] {} - FAILED", idx, name)
                         }
                     } else {
-                        format!("Failed: {}", name)
+                        format!("[{}] {} - INVALID", idx, name)
                     };
                     model.renderer.show_notification(msg);
                 }
