@@ -18,6 +18,9 @@ pub struct SourcePipe {
     devices: Vec<DeviceInfo>,
     current_device: usize,
     _stream: Option<Stream>,
+    // Auto-gain normalization state
+    smoothed_peak: f32,
+    target_level: f32,
 }
 
 impl SourcePipe {
@@ -68,6 +71,8 @@ impl SourcePipe {
             devices,
             current_device: start_index,
             _stream: stream,
+            smoothed_peak: 0.1, // Start with a reasonable default
+            target_level: 0.5,  // Target peak level for normalization
         }
     }
 
@@ -247,7 +252,26 @@ impl SourcePipe {
         self.devices = Self::collect_devices();
     }
 
-    pub fn stream(&self) -> Vec<f32> {
-        self.buffer.lock().unwrap().clone()
+    pub fn stream(&mut self) -> Vec<f32> {
+        let buffer = self.buffer.lock().unwrap().clone();
+
+        // Calculate current peak level (absolute max)
+        let current_peak = buffer.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+
+        // Smooth the peak tracking (slow attack, slower release for stability)
+        if current_peak > self.smoothed_peak {
+            // Fast attack when signal gets louder
+            self.smoothed_peak = self.smoothed_peak * 0.8 + current_peak * 0.2;
+        } else {
+            // Slow release when signal gets quieter
+            self.smoothed_peak = self.smoothed_peak * 0.995 + current_peak * 0.005;
+        }
+
+        // Prevent division by zero and limit gain range
+        let safe_peak = self.smoothed_peak.max(0.001);
+        let gain = (self.target_level / safe_peak).clamp(0.5, 10.0);
+
+        // Apply gain normalization
+        buffer.iter().map(|s| (s * gain).clamp(-1.0, 1.0)).collect()
     }
 }
