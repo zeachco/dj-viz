@@ -59,11 +59,14 @@ impl Spectrogram {
             (1.0, t, t)
         };
 
+        // Alpha scales with magnitude for transparency blending
+        let alpha = (mag * 200.0 + 55.0) as u8;
+
         srgba(
             (r * 255.0) as u8,
             (g * 255.0) as u8,
             (b * 255.0) as u8,
-            255,
+            alpha,
         )
     }
 }
@@ -107,24 +110,122 @@ impl Visualization for Spectrogram {
         let w = bounds.w();
         let h = bounds.h();
 
-        let column_width = w / HISTORY_SIZE as f32;
-        let row_height = h / DISPLAY_BINS as f32;
+        // Calculate perimeter and edge lengths
+        let perimeter = 2.0 * w + 2.0 * h;
+        let bottom_ratio = w / perimeter;
+        let left_ratio = h / perimeter;
+        let top_ratio = w / perimeter;
 
-        // Draw spectrogram
-        for (x_idx, column) in self.history.iter().enumerate() {
-            let x = bounds.left() + (x_idx as f32 + 0.5) * column_width;
+        // Distribute history columns across edges proportionally
+        let bottom_cols = (HISTORY_SIZE as f32 * bottom_ratio).round() as usize;
+        let left_cols = (HISTORY_SIZE as f32 * left_ratio).round() as usize;
+        let top_cols = (HISTORY_SIZE as f32 * top_ratio).round() as usize;
+        let right_cols = HISTORY_SIZE.saturating_sub(bottom_cols + left_cols + top_cols);
 
-            for y_idx in 0..DISPLAY_BINS {
-                let bin_idx = y_idx * (FFT_SIZE / 2) / DISPLAY_BINS;
-                let magnitude = column.get(bin_idx).copied().unwrap_or(0.0);
-                let y = bounds.bottom() + (y_idx as f32 + 0.5) * row_height;
+        let bin_size = w.min(h) / (2.0 * DISPLAY_BINS as f32); // Bins extend inward
 
-                let color = Self::magnitude_to_color(magnitude);
+        let mut col_offset = 0;
 
-                draw.rect()
-                    .x_y(x, y)
-                    .w_h(column_width + 1.0, row_height + 1.0)
-                    .color(color);
+        // Bottom edge: right to left, bins scale up
+        if bottom_cols > 0 {
+            let col_width = w / bottom_cols as f32;
+            for i in 0..bottom_cols {
+                let col_idx = col_offset + i;
+                if col_idx >= self.history.len() {
+                    break;
+                }
+                let column = &self.history[col_idx];
+                let x = bounds.right() - (i as f32 + 0.5) * col_width;
+
+                for y_idx in 0..DISPLAY_BINS {
+                    let bin_idx = y_idx * (FFT_SIZE / 2) / DISPLAY_BINS;
+                    let magnitude = column.get(bin_idx).copied().unwrap_or(0.0);
+                    let y = bounds.bottom() + (y_idx as f32 + 0.5) * bin_size;
+
+                    let color = Self::magnitude_to_color(magnitude);
+                    draw.rect()
+                        .x_y(x, y)
+                        .w_h(col_width + 1.0, bin_size + 1.0)
+                        .color(color);
+                }
+            }
+            col_offset += bottom_cols;
+        }
+
+        // Left edge: bottom to top, bins scale right
+        if left_cols > 0 {
+            let col_height = h / left_cols as f32;
+            for i in 0..left_cols {
+                let col_idx = col_offset + i;
+                if col_idx >= self.history.len() {
+                    break;
+                }
+                let column = &self.history[col_idx];
+                let y = bounds.bottom() + (i as f32 + 0.5) * col_height;
+
+                for x_idx in 0..DISPLAY_BINS {
+                    let bin_idx = x_idx * (FFT_SIZE / 2) / DISPLAY_BINS;
+                    let magnitude = column.get(bin_idx).copied().unwrap_or(0.0);
+                    let x = bounds.left() + (x_idx as f32 + 0.5) * bin_size;
+
+                    let color = Self::magnitude_to_color(magnitude);
+                    draw.rect()
+                        .x_y(x, y)
+                        .w_h(bin_size + 1.0, col_height + 1.0)
+                        .color(color);
+                }
+            }
+            col_offset += left_cols;
+        }
+
+        // Top edge: left to right, bins scale down
+        if top_cols > 0 {
+            let col_width = w / top_cols as f32;
+            for i in 0..top_cols {
+                let col_idx = col_offset + i;
+                if col_idx >= self.history.len() {
+                    break;
+                }
+                let column = &self.history[col_idx];
+                let x = bounds.left() + (i as f32 + 0.5) * col_width;
+
+                for y_idx in 0..DISPLAY_BINS {
+                    let bin_idx = y_idx * (FFT_SIZE / 2) / DISPLAY_BINS;
+                    let magnitude = column.get(bin_idx).copied().unwrap_or(0.0);
+                    let y = bounds.top() - (y_idx as f32 + 0.5) * bin_size;
+
+                    let color = Self::magnitude_to_color(magnitude);
+                    draw.rect()
+                        .x_y(x, y)
+                        .w_h(col_width + 1.0, bin_size + 1.0)
+                        .color(color);
+                }
+            }
+            col_offset += top_cols;
+        }
+
+        // Right edge: top to bottom, bins scale left
+        if right_cols > 0 {
+            let col_height = h / right_cols as f32;
+            for i in 0..right_cols {
+                let col_idx = col_offset + i;
+                if col_idx >= self.history.len() {
+                    break;
+                }
+                let column = &self.history[col_idx];
+                let y = bounds.top() - (i as f32 + 0.5) * col_height;
+
+                for x_idx in 0..DISPLAY_BINS {
+                    let bin_idx = x_idx * (FFT_SIZE / 2) / DISPLAY_BINS;
+                    let magnitude = column.get(bin_idx).copied().unwrap_or(0.0);
+                    let x = bounds.right() - (x_idx as f32 + 0.5) * bin_size;
+
+                    let color = Self::magnitude_to_color(magnitude);
+                    draw.rect()
+                        .x_y(x, y)
+                        .w_h(bin_size + 1.0, col_height + 1.0)
+                        .color(color);
+                }
             }
         }
     }
