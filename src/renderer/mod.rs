@@ -154,7 +154,7 @@ impl Renderer {
     }
 
     pub fn draw(&self, draw: &Draw, bounds: Rect) {
-        draw.background().color(BLACK);
+        // Note: Don't draw background - feedback shader clears to black and preserves trails
         self.visualizations[self.current_idx].draw(draw, bounds);
 
         // Draw notification text at middle top

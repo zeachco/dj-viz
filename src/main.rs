@@ -89,8 +89,11 @@ fn update(app: &App, model: &mut Model, _update: Update) {
     // Update feedback zoom based on beat intensity (bass + energy peaks)
     {
         let mut feedback = model.feedback.borrow_mut();
-        // Base zoom with beat-reactive boost: zooms in more on bass hits
-        feedback.scale = 1.003 + analysis.bass * 0.015 + if analysis.peak { 0.005 } else { 0.0 };
+        // Sine wave oscillation over 12 seconds: zooms in and out
+        let phase = app.time * std::f32::consts::TAU / 12.0;
+        let base_scale = 1.0 + 0.003 * phase.sin();
+        // Add beat-reactive boost on top
+        feedback.scale = base_scale + analysis.bass * 0.015 + if analysis.peak { 0.005 } else { 0.0 };
     }
 }
 
@@ -101,8 +104,8 @@ fn view(app: &App, model: &Model, frame: Frame) {
     let bounds = app.window_rect();
 
     // Create draw context for visualization
+    // Note: Don't draw background - feedback shader handles it to preserve trails
     let draw = app.draw();
-    draw.background().color(BLACK);
     model.renderer.draw(&draw, bounds);
 
     // Render through feedback buffer and output to frame
