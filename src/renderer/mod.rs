@@ -1,4 +1,4 @@
-pub mod radial;
+pub mod solar_beat;
 pub mod spectrogram;
 
 use nannou::prelude::*;
@@ -8,7 +8,7 @@ use rustfft::FftPlanner;
 
 use crate::audio::BUFFER_SIZE;
 
-pub use radial::Radial;
+pub use solar_beat::SolarBeat;
 pub use spectrogram::Spectrogram;
 
 /// Trait that all visualizations must implement
@@ -90,11 +90,11 @@ impl Renderer {
         Self::new(Box::new(Spectrogram::new()))
     }
 
-    pub fn with_radial() -> Self {
-        Self::new(Box::new(Radial::new()))
+    pub fn with_solar_beat() -> Self {
+        Self::new(Box::new(SolarBeat::new()))
     }
 
-    /// Creates a renderer that cycles between spectrogram and radial
+    /// Creates a renderer that cycles between spectrogram and solar beat
     /// when high frequencies are loud
     pub fn with_cycling() -> Self {
         let fft_window: Vec<f32> = (0..FFT_SIZE)
@@ -103,7 +103,7 @@ impl Renderer {
 
         Self {
             visualizations: vec![
-                Box::new(Radial::new()),
+                Box::new(SolarBeat::new()),
                 Box::new(Spectrogram::new()),
             ],
             current_idx: 0,

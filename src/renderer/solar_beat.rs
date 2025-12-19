@@ -2,21 +2,28 @@ use super::Visualization;
 use nannou::prelude::*;
 use num_complex::Complex;
 use rustfft::FftPlanner;
+use std::collections::VecDeque;
 
 use crate::audio::BUFFER_SIZE;
 
 const FFT_SIZE: usize = BUFFER_SIZE;
 const NUM_LINES: usize = if cfg!(debug_assertions) { 64 } else { 128 };
-const OVAL_SCALE: f32 = 0.75;
+const TRAIL_LENGTH: usize = 12; // Number of historical frames for trail effect
+const ZOOM_FACTOR: f32 = 0.97; // Each trail layer zooms in slightly
+const FADE_FACTOR: f32 = 0.75; // Each trail layer fades
 
-pub struct Radial {
+pub struct SolarBeat {
     magnitudes: Vec<f32>,
     fft_planner: FftPlanner<f32>,
     fft_window: Vec<f32>,
     smoothed_magnitudes: Vec<f32>,
+    // Trail history: stores magnitude snapshots for the trailing effect
+    magnitude_history: VecDeque<Vec<f32>>,
+    // Rotation offset for psychedelic effect
+    rotation_offset: f32,
 }
 
-impl Radial {
+impl SolarBeat {
     pub fn new() -> Self {
         // Create Hann window for FFT
         let fft_window: Vec<f32> = (0..FFT_SIZE)
@@ -28,97 +35,65 @@ impl Radial {
             fft_planner: FftPlanner::new(),
             fft_window,
             smoothed_magnitudes: vec![0.0; NUM_LINES],
+            magnitude_history: VecDeque::with_capacity(TRAIL_LENGTH),
+            rotation_offset: 0.0,
         }
     }
 
-    fn magnitude_to_color(mag: f32) -> Srgba<u8> {
+    fn magnitude_to_color(mag: f32, trail_idx: usize) -> Srgba<u8> {
         let mag = mag.clamp(0.0, 1.0);
 
-        // Cyan to magenta gradient through white for high values
-        let (r, g, b) = if mag < 0.25 {
-            let t = mag / 0.25;
-            (0.0, t * 0.8, t)
-        } else if mag < 0.5 {
-            let t = (mag - 0.25) / 0.25;
-            (t * 0.5, 0.8 + t * 0.2, 1.0)
-        } else if mag < 0.75 {
-            let t = (mag - 0.5) / 0.25;
-            (0.5 + t * 0.5, 1.0, 1.0 - t * 0.5)
+        // Calculate alpha based on trail position (older = more faded)
+        let trail_alpha = FADE_FACTOR.powi(trail_idx as i32);
+
+        // Vibrant color palette inspired by WMP: cyan -> magenta -> yellow -> white
+        let (r, g, b) = if mag < 0.2 {
+            // Deep blue to cyan
+            let t = mag / 0.2;
+            (0.0, t * 0.6, 0.3 + t * 0.7)
+        } else if mag < 0.4 {
+            // Cyan to magenta
+            let t = (mag - 0.2) / 0.2;
+            (t * 0.8, 0.6 - t * 0.2, 1.0 - t * 0.3)
+        } else if mag < 0.6 {
+            // Magenta to pink/white
+            let t = (mag - 0.4) / 0.2;
+            (0.8 + t * 0.2, 0.4 + t * 0.4, 0.7 + t * 0.3)
+        } else if mag < 0.8 {
+            // Pink to yellow
+            let t = (mag - 0.6) / 0.2;
+            (1.0, 0.8 + t * 0.2, 1.0 - t * 0.6)
         } else {
-            let t = (mag - 0.75) / 0.25;
-            (1.0, 1.0 - t * 0.5, 0.5 + t * 0.5)
+            // Yellow to white hot
+            let t = (mag - 0.8) / 0.2;
+            (1.0, 1.0, 0.4 + t * 0.6)
         };
 
         srgba(
             (r * 255.0) as u8,
             (g * 255.0) as u8,
             (b * 255.0) as u8,
-            255,
+            (trail_alpha * 255.0) as u8,
         )
     }
 
-    /// Maps a line index (0 to NUM_LINES-1) to a frequency bin index
-    /// Bottom of circle = low frequencies, top = high frequencies
-    /// Each side (left/right) shows the full frequency range
-    fn line_to_freq_bin(&self, line_idx: usize, side: Side) -> usize {
-        let half_lines = NUM_LINES / 2;
+    /// Maps a line index to a frequency bin with logarithmic scaling
+    fn line_to_freq_bin(&self, line_idx: usize) -> usize {
         let num_bins = self.magnitudes.len();
-
-        // Position within half (0 at bottom, half_lines-1 at top)
-        let pos_in_half = match side {
-            Side::Right => {
-                // Right side: line 0 is at bottom, going up to top
-                if line_idx < half_lines {
-                    line_idx
-                } else {
-                    NUM_LINES - 1 - line_idx
-                }
-            }
-            Side::Left => {
-                // Left side: mirrored
-                if line_idx < half_lines {
-                    half_lines - 1 - line_idx
-                } else {
-                    line_idx - half_lines
-                }
-            }
-        };
-
-        // Map position to frequency bin (log scale for perceptual accuracy)
-        let normalized = pos_in_half as f32 / (half_lines - 1) as f32;
-        // Use power scale to emphasize bass frequencies visually
+        let normalized = line_idx as f32 / (NUM_LINES - 1) as f32;
+        // Power scale emphasizes bass frequencies
         let scaled = normalized.powf(2.0);
         ((scaled * (num_bins - 1) as f32) as usize).min(num_bins - 1)
     }
 
-    /// Calculates the angle for a given line index
-    /// Starting from bottom (270°), right side goes clockwise, left side counter-clockwise
-    fn line_to_angle(&self, line_idx: usize) -> f32 {
-        let half_lines = NUM_LINES / 2;
-
-        if line_idx < half_lines {
-            // Right side: from bottom (3π/2) to top (π/2) going through 0
-            let t = line_idx as f32 / (half_lines - 1) as f32;
-            // 3π/2 (bottom) -> 2π -> 0 -> π/2 (top)
-            // Simplified: -π/2 + t * π = from -π/2 to π/2
-            -std::f32::consts::FRAC_PI_2 + t * std::f32::consts::PI
-        } else {
-            // Left side: from bottom (3π/2) to top (π/2) going through π
-            let t = (line_idx - half_lines) as f32 / (half_lines - 1) as f32;
-            // 3π/2 (bottom) -> π -> π/2 (top)
-            // = 3π/2 - t * π
-            std::f32::consts::FRAC_PI_2 * 3.0 - t * std::f32::consts::PI
-        }
+    /// Calculates the angle for a given line index (evenly distributed around the circle)
+    fn line_to_angle(&self, line_idx: usize, rotation: f32) -> f32 {
+        let base_angle = (line_idx as f32 / NUM_LINES as f32) * std::f32::consts::TAU;
+        base_angle + rotation
     }
 }
 
-#[derive(Clone, Copy)]
-enum Side {
-    Right,
-    Left,
-}
-
-impl Visualization for Radial {
+impl Visualization for SolarBeat {
     fn update(&mut self, samples: &[f32]) {
         // Apply window function
         let windowed: Vec<f32> = samples
@@ -143,81 +118,128 @@ impl Visualization for Radial {
                 let mag = c.norm() / FFT_SIZE as f32;
                 // Convert to dB scale, normalize to 0-1
                 let db = 20.0 * (mag + 1e-10).log10();
-                // Map -60dB to 0dB range to 0-1 (more sensitive than spectrogram)
+                // Map -60dB to 0dB range to 0-1
                 ((db + 60.0) / 60.0).clamp(0.0, 1.0)
             })
             .collect();
 
         // Calculate smoothed magnitudes for each line
-        let half_lines = NUM_LINES / 2;
         for i in 0..NUM_LINES {
-            let side = if i < half_lines { Side::Right } else { Side::Left };
-            let bin_idx = self.line_to_freq_bin(i, side);
+            let bin_idx = self.line_to_freq_bin(i);
 
-            // Average a few neighboring bins for smoother visualization
+            // Average neighboring bins for smoother visualization
             let start = bin_idx.saturating_sub(2);
             let end = (bin_idx + 3).min(self.magnitudes.len());
             let avg: f32 = self.magnitudes[start..end].iter().sum::<f32>()
                 / (end - start) as f32;
 
-            // Smooth over time
-            let smoothing = 0.3;
+            // Light smoothing over time
+            let smoothing = 0.2;
             self.smoothed_magnitudes[i] =
                 self.smoothed_magnitudes[i] * smoothing + avg * (1.0 - smoothing);
         }
+
+        // Store current magnitudes in history for trail effect
+        if self.magnitude_history.len() >= TRAIL_LENGTH {
+            self.magnitude_history.pop_front();
+        }
+        self.magnitude_history.push_back(self.smoothed_magnitudes.clone());
+
+        // Update rotation based on bass energy for psychedelic movement
+        let bass_energy: f32 = self.smoothed_magnitudes[..NUM_LINES / 8]
+            .iter()
+            .sum::<f32>() / (NUM_LINES / 8) as f32;
+        self.rotation_offset += 0.005 + bass_energy * 0.02;
     }
 
     fn draw(&self, draw: &Draw, bounds: Rect) {
         let center_x = bounds.x();
         let center_y = bounds.y();
 
-        // Calculate ellipse radii (0.75 of the way to edges)
-        let max_rx = bounds.w() / 2.0 * OVAL_SCALE;
-        let max_ry = bounds.h() / 2.0 * OVAL_SCALE;
+        // Max radius for lines (use full extent of smaller dimension)
+        let max_radius = bounds.w().min(bounds.h()) / 2.0;
 
-        // Base radius for the inner circle (where lines start)
-        let inner_scale = 0.2;
-        let inner_rx = max_rx * inner_scale;
-        let inner_ry = max_ry * inner_scale;
+        // Draw trail layers (oldest first, so newest is on top)
+        for (trail_idx, historical_mags) in self.magnitude_history.iter().enumerate() {
+            // Calculate zoom scale for this trail layer (older = more zoomed in)
+            let age = self.magnitude_history.len() - trail_idx - 1;
+            let scale = ZOOM_FACTOR.powi(age as i32);
 
-        // Draw each line
+            // Slight rotation offset for older frames (creates spiral effect)
+            let trail_rotation = self.rotation_offset - (age as f32 * 0.015);
+
+            self.draw_burst(
+                draw,
+                center_x,
+                center_y,
+                max_radius * scale,
+                historical_mags,
+                trail_rotation,
+                trail_idx,
+            );
+        }
+    }
+}
+
+impl SolarBeat {
+    fn draw_burst(
+        &self,
+        draw: &Draw,
+        center_x: f32,
+        center_y: f32,
+        radius: f32,
+        magnitudes: &[f32],
+        rotation: f32,
+        trail_idx: usize,
+    ) {
+        // Inner radius where lines converge (very small for sharp center)
+        let inner_radius = radius * 0.05;
+
         for i in 0..NUM_LINES {
-            let angle = self.line_to_angle(i);
-            let magnitude = self.smoothed_magnitudes[i];
-
-            // Calculate line length based on magnitude
-            // Lines extend from inner ellipse to outer ellipse based on magnitude
-            let outer_scale = inner_scale + (1.0 - inner_scale) * magnitude;
+            let angle = self.line_to_angle(i, rotation);
+            let magnitude = magnitudes.get(i).copied().unwrap_or(0.0);
 
             let cos_a = angle.cos();
             let sin_a = angle.sin();
 
-            // Start point (on inner ellipse)
-            let start_x = center_x + inner_rx * cos_a;
-            let start_y = center_y + inner_ry * sin_a;
+            // Calculate outward line length based on magnitude
+            let outward_length = inner_radius + (radius - inner_radius) * magnitude;
 
-            // End point (extends based on magnitude)
-            let end_x = center_x + max_rx * outer_scale * cos_a;
-            let end_y = center_y + max_ry * outer_scale * sin_a;
+            // Calculate inward line length (opposite direction, slightly shorter)
+            let inward_length = inner_radius * (0.5 + magnitude * 1.5);
 
-            let color = Self::magnitude_to_color(magnitude);
+            // Center point
+            let center_pt = pt2(center_x, center_y);
 
-            // Draw the line with thickness based on magnitude
-            let thickness = 1.0 + magnitude * 3.0;
+            // Outward endpoint
+            let outward_x = center_x + outward_length * cos_a;
+            let outward_y = center_y + outward_length * sin_a;
+            let outward_pt = pt2(outward_x, outward_y);
+
+            // Inward endpoint (opposite direction from center)
+            let inward_x = center_x - inward_length * cos_a;
+            let inward_y = center_y - inward_length * sin_a;
+            let inward_pt = pt2(inward_x, inward_y);
+
+            let color = Self::magnitude_to_color(magnitude, trail_idx);
+
+            // Line thickness based on magnitude and trail age
+            let base_thickness = 1.0 + magnitude * 3.0;
+            let trail_thickness = base_thickness * FADE_FACTOR.powi(trail_idx as i32);
+
+            // Draw outward line
             draw.line()
-                .start(pt2(start_x, start_y))
-                .end(pt2(end_x, end_y))
-                .weight(thickness)
+                .start(center_pt)
+                .end(outward_pt)
+                .weight(trail_thickness)
+                .color(color);
+
+            // Draw inward line (creates the "starburst" effect)
+            draw.line()
+                .start(center_pt)
+                .end(inward_pt)
+                .weight(trail_thickness * 0.7)
                 .color(color);
         }
-
-        // Draw a subtle inner ellipse outline
-        let inner_color = srgba(50u8, 50u8, 80u8, 200u8);
-        draw.ellipse()
-            .x_y(center_x, center_y)
-            .w_h(inner_rx * 2.0, inner_ry * 2.0)
-            .no_fill()
-            .stroke(inner_color)
-            .stroke_weight(1.0);
     }
 }

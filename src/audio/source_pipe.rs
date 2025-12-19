@@ -34,10 +34,16 @@ impl SourcePipe {
                 devices.iter().position(|d| d.name == *name && d.is_input == is_input)
             })
             .or_else(|| {
-                // Fall back to default output device
+                // Prefer pipewire or pulse input devices (more reliable on Linux)
+                devices.iter().position(|d| d.is_input && d.name == "pipewire")
+            })
+            .or_else(|| {
+                devices.iter().position(|d| d.is_input && d.name == "pulse")
+            })
+            .or_else(|| {
+                // Fall back to default output device for loopback capture
                 let host = cpal::default_host();
                 let default_output_name = host.default_output_device().and_then(|d| d.name().ok());
-                println!("Default output: {:?}", default_output_name);
                 default_output_name
                     .and_then(|name| devices.iter().position(|d| !d.is_input && d.name == name))
             })
