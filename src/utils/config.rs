@@ -12,6 +12,9 @@ const CONFIG_TEMPLATE: &str = r#"# dj-viz configuration file
 # Last selected audio device (auto-saved)
 # last_device = "Device Name"
 # last_device_is_input = false
+
+# Last selected PipeWire stream target (auto-saved)
+# pw_link_target = "Spotify:output_FL"
 "#;
 
 #[derive(Serialize, Deserialize, Default)]
@@ -19,6 +22,7 @@ pub struct Config {
     pub last_device: Option<String>,
     pub last_device_is_input: Option<bool>,
     pub device_timeout_secs: Option<u64>,
+    pub pw_link_target: Option<String>,
 }
 
 impl Config {
@@ -60,6 +64,11 @@ impl Config {
     pub fn set_device(&mut self, name: &str, is_input: bool) {
         self.last_device = Some(name.to_string());
         self.last_device_is_input = Some(is_input);
+        self.save();
+    }
+
+    pub fn set_pw_link_target(&mut self, target: &str) {
+        self.pw_link_target = Some(target.to_string());
         self.save();
     }
 }

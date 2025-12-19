@@ -209,6 +209,21 @@ impl SourcePipe {
         self.devices.len()
     }
 
+    /// Select a device by name (partial match, case-insensitive)
+    /// Returns Some((device_name, success)) if found and switched
+    pub fn select_device_by_name(&mut self, name: &str) -> Option<(String, bool)> {
+        let name_lower = name.to_lowercase();
+        let index = self.devices.iter().position(|d| {
+            d.name.to_lowercase().contains(&name_lower)
+        })?;
+        self.select_device(index)
+    }
+
+    /// Refresh the device list and return new count
+    pub fn refresh_devices(&mut self) {
+        self.devices = Self::collect_devices();
+    }
+
     pub fn stream(&self) -> Vec<f32> {
         self.buffer.lock().unwrap().clone()
     }
