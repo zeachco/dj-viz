@@ -27,7 +27,7 @@ src/
 ├── renderer/        # OUTPUT: visualization layer
 │   ├── mod.rs
 │   ├── spectrogram.rs
-│   └── radial.rs
+│   └── solar_beat.rs
 └── utils/           # Shared utilities (config, diagnostics)
 ```
 
@@ -42,7 +42,7 @@ Future input layers (e.g., webcam) should follow the same pattern as `audio/`.
 - **mod.rs** - `Renderer` orchestrates visualizations, performs FFT for high-frequency detection, auto-cycles between visualizations when treble peaks
 - `Visualization` trait (`renderer/mod.rs:15-21`): `update(&mut self, samples: &[f32])` + `draw(&self, draw: &Draw, bounds: Rect)`
 - **spectrogram.rs** - scrolling frequency/time heatmap with FFT history
-- **radial.rs** - oval frequency display, bass at bottom, treble at top
+- **solar_beat.rs** - radial frequency display with particle effects
 
 ### Configuration
 
@@ -54,3 +54,7 @@ Future input layers (e.g., webcam) should follow the same pattern as `audio/`.
 - **nannou** - graphics/windowing
 - **cpal** - cross-platform audio capture
 - **rustfft** - FFT for frequency analysis
+
+## Skills
+
+- `/new-visualization <name>` - Generate a new visualization module (see `.claude/skills/new-visualization.md`)
