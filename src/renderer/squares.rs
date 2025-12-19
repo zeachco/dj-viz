@@ -15,6 +15,8 @@ struct Square {
     size: f32,
     band_idx: usize,
     lifetime: f32,
+    rotation: f32,
+    rotation_dir: f32, // 1.0 or -1.0 for clockwise/counter-clockwise
 }
 
 /// Squares visualization with hue-cycling and pulsing borders
@@ -90,12 +92,17 @@ impl Squares {
         let size_factor = 1.0 - (band_idx as f32 / NUM_BANDS as f32);
         let size = 10.0 + size_factor * 40.0 + rng.random_range(0.0..20.0);
 
+        // Random rotation direction
+        let rotation_dir = if rng.random::<bool>() { 1.0 } else { -1.0 };
+
         self.squares.push(Square {
             x,
             y,
             size,
             band_idx,
             lifetime: 0.0,
+            rotation: 0.0,
+            rotation_dir,
         });
     }
 }
@@ -128,9 +135,17 @@ impl Visualization for Squares {
         self.translation_x *= 0.95;
         self.translation_y *= 0.95;
 
-        // Update square lifetimes and remove old ones
+        // Update square lifetimes and rotation based on energy
         for square in &mut self.squares {
             square.lifetime += 1.0;
+            // Tilt rotation based on energy - subtle wobble following the beat
+            let band_energy = self.smoothed_bands
+                .get(square.band_idx)
+                .copied()
+                .unwrap_or(0.0);
+            square.rotation += square.rotation_dir * band_energy * 0.15;
+            // Dampen rotation back towards zero
+            square.rotation *= 0.92;
         }
         self.squares.retain(|s| s.lifetime < 180.0); // ~3 seconds
 
@@ -190,12 +205,14 @@ impl Visualization for Squares {
             draw.rect()
                 .x_y(x, y)
                 .w_h(size + border_width * 2.0, size + border_width * 2.0)
+                .rotate(square.rotation)
                 .color(hsla(border_hue, saturation, lightness, alpha));
 
             // Draw fill
             draw.rect()
                 .x_y(x, y)
                 .w_h(size, size)
+                .rotate(square.rotation)
                 .color(hsla(hue, saturation, lightness, alpha));
         }
     }

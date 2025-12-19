@@ -85,6 +85,13 @@ fn update(app: &App, model: &mut Model, _update: Update) {
     }
 
     model.renderer.update(&analysis);
+
+    // Update feedback zoom based on beat intensity (bass + energy peaks)
+    {
+        let mut feedback = model.feedback.borrow_mut();
+        // Base zoom with beat-reactive boost: zooms in more on bass hits
+        feedback.scale = 1.003 + analysis.bass * 0.015 + if analysis.peak { 0.005 } else { 0.0 };
+    }
 }
 
 fn view(app: &App, model: &Model, frame: Frame) {
