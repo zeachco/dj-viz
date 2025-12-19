@@ -2,28 +2,19 @@ use super::Visualization;
 use nannou::prelude::*;
 use num_complex::Complex;
 use rustfft::FftPlanner;
-use std::collections::VecDeque;
 
 use crate::audio::BUFFER_SIZE;
 
 const FFT_SIZE: usize = BUFFER_SIZE;
 const NUM_LINES: usize = if cfg!(debug_assertions) { 64 } else { 128 };
-const TRAIL_LENGTH: usize = 12; // Number of historical frames for trail effect
-const ZOOM_AMPLITUDE: f32 = 0.03; // How much the zoom oscillates (0.97 to 1.03)
-const ZOOM_PERIOD: f32 = 10.0; // Seconds for one full oscillation cycle
-const FADE_FACTOR: f32 = 0.75; // Each trail layer fades
 
 pub struct SolarBeat {
     magnitudes: Vec<f32>,
     fft_planner: FftPlanner<f32>,
     fft_window: Vec<f32>,
     smoothed_magnitudes: Vec<f32>,
-    // Trail history: stores magnitude snapshots for the trailing effect
-    magnitude_history: VecDeque<Vec<f32>>,
     // Rotation offset for psychedelic effect
     rotation_offset: f32,
-    // Time elapsed for oscillating effects
-    elapsed_time: f32,
 }
 
 impl SolarBeat {
@@ -38,17 +29,12 @@ impl SolarBeat {
             fft_planner: FftPlanner::new(),
             fft_window,
             smoothed_magnitudes: vec![0.0; NUM_LINES],
-            magnitude_history: VecDeque::with_capacity(TRAIL_LENGTH),
             rotation_offset: 0.0,
-            elapsed_time: 0.0,
         }
     }
 
-    fn magnitude_to_color(mag: f32, trail_idx: usize) -> Srgba<u8> {
+    fn magnitude_to_color(mag: f32) -> Srgba<u8> {
         let mag = mag.clamp(0.0, 1.0);
-
-        // Calculate alpha based on trail position (older = more faded)
-        let trail_alpha = FADE_FACTOR.powi(trail_idx as i32);
 
         // Vibrant color palette inspired by WMP: cyan -> magenta -> yellow -> white
         let (r, g, b) = if mag < 0.2 {
@@ -77,7 +63,7 @@ impl SolarBeat {
             (r * 255.0) as u8,
             (g * 255.0) as u8,
             (b * 255.0) as u8,
-            (trail_alpha * 255.0) as u8,
+            255,
         )
     }
 
@@ -143,20 +129,11 @@ impl Visualization for SolarBeat {
                 self.smoothed_magnitudes[i] * smoothing + avg * (1.0 - smoothing);
         }
 
-        // Store current magnitudes in history for trail effect
-        if self.magnitude_history.len() >= TRAIL_LENGTH {
-            self.magnitude_history.pop_front();
-        }
-        self.magnitude_history.push_back(self.smoothed_magnitudes.clone());
-
         // Update rotation based on bass energy for psychedelic movement
         let bass_energy: f32 = self.smoothed_magnitudes[..NUM_LINES / 8]
             .iter()
             .sum::<f32>() / (NUM_LINES / 8) as f32;
         self.rotation_offset += 0.005 + bass_energy * 0.02;
-
-        // Increment elapsed time (~60fps assumed, ~1/60 seconds per frame)
-        self.elapsed_time += 1.0 / 60.0;
     }
 
     fn draw(&self, draw: &Draw, bounds: Rect) {
@@ -166,30 +143,15 @@ impl Visualization for SolarBeat {
         // Max radius for lines (use full extent of smaller dimension)
         let max_radius = bounds.w().min(bounds.h()) / 2.0;
 
-        // Calculate oscillating zoom factor: oscillates between (1-amp) and (1+amp) over ZOOM_PERIOD seconds
-        // sin gives -1 to 1, so zoom_factor ranges from 0.97 to 1.03 with default amplitude
-        let oscillation = (self.elapsed_time * std::f32::consts::TAU / ZOOM_PERIOD).sin();
-        let zoom_factor = 1.0 - oscillation * ZOOM_AMPLITUDE;
-
-        // Draw trail layers (oldest first, so newest is on top)
-        for (trail_idx, historical_mags) in self.magnitude_history.iter().enumerate() {
-            // Calculate zoom scale for this trail layer (older = more/less zoomed based on oscillation)
-            let age = self.magnitude_history.len() - trail_idx - 1;
-            let scale = zoom_factor.powi(age as i32);
-
-            // Slight rotation offset for older frames (creates spiral effect)
-            let trail_rotation = self.rotation_offset - (age as f32 * 0.015);
-
-            self.draw_burst(
-                draw,
-                center_x,
-                center_y,
-                max_radius * scale,
-                historical_mags,
-                trail_rotation,
-                trail_idx,
-            );
-        }
+        // Draw current frame only - trail effect handled by feedback buffer
+        self.draw_burst(
+            draw,
+            center_x,
+            center_y,
+            max_radius,
+            &self.smoothed_magnitudes,
+            self.rotation_offset,
+        );
     }
 }
 
@@ -202,7 +164,6 @@ impl SolarBeat {
         radius: f32,
         magnitudes: &[f32],
         rotation: f32,
-        trail_idx: usize,
     ) {
         // Inner radius where lines converge (very small for sharp center)
         let inner_radius = radius * 0.05;
@@ -233,24 +194,23 @@ impl SolarBeat {
             let inward_y = center_y - inward_length * sin_a;
             let inward_pt = pt2(inward_x, inward_y);
 
-            let color = Self::magnitude_to_color(magnitude, trail_idx);
+            let color = Self::magnitude_to_color(magnitude);
 
-            // Line thickness based on magnitude and trail age
-            let base_thickness = 1.0 + magnitude * 3.0;
-            let trail_thickness = base_thickness * FADE_FACTOR.powi(trail_idx as i32);
+            // Line thickness based on magnitude
+            let thickness = 1.0 + magnitude * 3.0;
 
             // Draw outward line
             draw.line()
                 .start(center_pt)
                 .end(outward_pt)
-                .weight(trail_thickness)
+                .weight(thickness)
                 .color(color);
 
             // Draw inward line (creates the "starburst" effect)
             draw.line()
                 .start(center_pt)
                 .end(inward_pt)
-                .weight(trail_thickness * 0.7)
+                .weight(thickness * 0.7)
                 .color(color);
         }
     }

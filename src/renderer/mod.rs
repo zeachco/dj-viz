@@ -1,3 +1,4 @@
+pub mod feedback;
 pub mod solar_beat;
 pub mod spectrogram;
 
@@ -8,6 +9,7 @@ use rustfft::FftPlanner;
 
 use crate::audio::BUFFER_SIZE;
 
+pub use feedback::FeedbackRenderer;
 pub use solar_beat::SolarBeat;
 pub use spectrogram::Spectrogram;
 
