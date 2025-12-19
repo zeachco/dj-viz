@@ -9,7 +9,8 @@ use crate::audio::BUFFER_SIZE;
 const FFT_SIZE: usize = BUFFER_SIZE;
 const NUM_LINES: usize = if cfg!(debug_assertions) { 64 } else { 128 };
 const TRAIL_LENGTH: usize = 12; // Number of historical frames for trail effect
-const ZOOM_FACTOR: f32 = 0.97; // Each trail layer zooms in slightly
+const ZOOM_AMPLITUDE: f32 = 0.03; // How much the zoom oscillates (0.97 to 1.03)
+const ZOOM_PERIOD: f32 = 10.0; // Seconds for one full oscillation cycle
 const FADE_FACTOR: f32 = 0.75; // Each trail layer fades
 
 pub struct SolarBeat {
@@ -21,6 +22,8 @@ pub struct SolarBeat {
     magnitude_history: VecDeque<Vec<f32>>,
     // Rotation offset for psychedelic effect
     rotation_offset: f32,
+    // Time elapsed for oscillating effects
+    elapsed_time: f32,
 }
 
 impl SolarBeat {
@@ -37,6 +40,7 @@ impl SolarBeat {
             smoothed_magnitudes: vec![0.0; NUM_LINES],
             magnitude_history: VecDeque::with_capacity(TRAIL_LENGTH),
             rotation_offset: 0.0,
+            elapsed_time: 0.0,
         }
     }
 
@@ -150,6 +154,9 @@ impl Visualization for SolarBeat {
             .iter()
             .sum::<f32>() / (NUM_LINES / 8) as f32;
         self.rotation_offset += 0.005 + bass_energy * 0.02;
+
+        // Increment elapsed time (~60fps assumed, ~1/60 seconds per frame)
+        self.elapsed_time += 1.0 / 60.0;
     }
 
     fn draw(&self, draw: &Draw, bounds: Rect) {
@@ -159,11 +166,16 @@ impl Visualization for SolarBeat {
         // Max radius for lines (use full extent of smaller dimension)
         let max_radius = bounds.w().min(bounds.h()) / 2.0;
 
+        // Calculate oscillating zoom factor: oscillates between (1-amp) and (1+amp) over ZOOM_PERIOD seconds
+        // sin gives -1 to 1, so zoom_factor ranges from 0.97 to 1.03 with default amplitude
+        let oscillation = (self.elapsed_time * std::f32::consts::TAU / ZOOM_PERIOD).sin();
+        let zoom_factor = 1.0 - oscillation * ZOOM_AMPLITUDE;
+
         // Draw trail layers (oldest first, so newest is on top)
         for (trail_idx, historical_mags) in self.magnitude_history.iter().enumerate() {
-            // Calculate zoom scale for this trail layer (older = more zoomed in)
+            // Calculate zoom scale for this trail layer (older = more/less zoomed based on oscillation)
             let age = self.magnitude_history.len() - trail_idx - 1;
-            let scale = ZOOM_FACTOR.powi(age as i32);
+            let scale = zoom_factor.powi(age as i32);
 
             // Slight rotation offset for older frames (creates spiral effect)
             let trail_rotation = self.rotation_offset - (age as f32 * 0.015);
