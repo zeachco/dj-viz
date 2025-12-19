@@ -1,17 +1,11 @@
 use super::Visualization;
 use nannou::prelude::*;
-use num_complex::Complex;
-use rustfft::FftPlanner;
 
-use crate::audio::BUFFER_SIZE;
+use crate::audio::{AudioAnalysis, NUM_BANDS};
 
-const FFT_SIZE: usize = BUFFER_SIZE;
 const NUM_LINES: usize = if cfg!(debug_assertions) { 64 } else { 128 };
 
 pub struct SolarBeat {
-    magnitudes: Vec<f32>,
-    fft_planner: FftPlanner<f32>,
-    fft_window: Vec<f32>,
     smoothed_magnitudes: Vec<f32>,
     // Rotation offset for psychedelic effect
     rotation_offset: f32,
@@ -19,15 +13,7 @@ pub struct SolarBeat {
 
 impl SolarBeat {
     pub fn new() -> Self {
-        // Create Hann window for FFT
-        let fft_window: Vec<f32> = (0..FFT_SIZE)
-            .map(|i| 0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / FFT_SIZE as f32).cos()))
-            .collect();
-
         Self {
-            magnitudes: vec![0.0; FFT_SIZE / 2],
-            fft_planner: FftPlanner::new(),
-            fft_window,
             smoothed_magnitudes: vec![0.0; NUM_LINES],
             rotation_offset: 0.0,
         }
@@ -67,13 +53,19 @@ impl SolarBeat {
         )
     }
 
-    /// Maps a line index to a frequency bin with logarithmic scaling
-    fn line_to_freq_bin(&self, line_idx: usize) -> usize {
-        let num_bins = self.magnitudes.len();
+    /// Maps a line index to a band with interpolation
+    fn line_to_band_value(&self, line_idx: usize, bands: &[f32; NUM_BANDS]) -> f32 {
         let normalized = line_idx as f32 / (NUM_LINES - 1) as f32;
         // Power scale emphasizes bass frequencies
         let scaled = normalized.powf(2.0);
-        ((scaled * (num_bins - 1) as f32) as usize).min(num_bins - 1)
+        let band_pos = scaled * (NUM_BANDS - 1) as f32;
+
+        // Interpolate between bands
+        let low_band = (band_pos as usize).min(NUM_BANDS - 1);
+        let high_band = (low_band + 1).min(NUM_BANDS - 1);
+        let t = band_pos - low_band as f32;
+
+        bands[low_band] * (1.0 - t) + bands[high_band] * t
     }
 
     /// Calculates the angle for a given line index (evenly distributed around the circle)
@@ -84,56 +76,19 @@ impl SolarBeat {
 }
 
 impl Visualization for SolarBeat {
-    fn update(&mut self, samples: &[f32]) {
-        // Apply window function
-        let windowed: Vec<f32> = samples
-            .iter()
-            .zip(self.fft_window.iter())
-            .map(|(s, w)| s * w)
-            .collect();
-
-        // Perform FFT
-        let fft = self.fft_planner.plan_fft_forward(FFT_SIZE);
-        let mut buffer: Vec<Complex<f32>> = windowed
-            .iter()
-            .map(|&s| Complex::new(s, 0.0))
-            .collect();
-
-        fft.process(&mut buffer);
-
-        // Calculate magnitude spectrum (only first half - positive frequencies)
-        self.magnitudes = buffer[..FFT_SIZE / 2]
-            .iter()
-            .map(|c| {
-                let mag = c.norm() / FFT_SIZE as f32;
-                // Convert to dB scale, normalize to 0-1
-                let db = 20.0 * (mag + 1e-10).log10();
-                // Map -60dB to 0dB range to 0-1
-                ((db + 60.0) / 60.0).clamp(0.0, 1.0)
-            })
-            .collect();
-
-        // Calculate smoothed magnitudes for each line
+    fn update(&mut self, analysis: &AudioAnalysis) {
+        // Calculate smoothed magnitudes for each line from band data
         for i in 0..NUM_LINES {
-            let bin_idx = self.line_to_freq_bin(i);
-
-            // Average neighboring bins for smoother visualization
-            let start = bin_idx.saturating_sub(2);
-            let end = (bin_idx + 3).min(self.magnitudes.len());
-            let avg: f32 = self.magnitudes[start..end].iter().sum::<f32>()
-                / (end - start) as f32;
+            let band_value = self.line_to_band_value(i, &analysis.bands);
 
             // Light smoothing over time
             let smoothing = 0.2;
             self.smoothed_magnitudes[i] =
-                self.smoothed_magnitudes[i] * smoothing + avg * (1.0 - smoothing);
+                self.smoothed_magnitudes[i] * smoothing + band_value * (1.0 - smoothing);
         }
 
         // Update rotation based on bass energy for psychedelic movement
-        let bass_energy: f32 = self.smoothed_magnitudes[..NUM_LINES / 8]
-            .iter()
-            .sum::<f32>() / (NUM_LINES / 8) as f32;
-        self.rotation_offset += 0.005 + bass_energy * 0.02;
+        self.rotation_offset += 0.005 + analysis.bass * 0.02;
     }
 
     fn draw(&self, draw: &Draw, bounds: Rect) {

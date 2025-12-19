@@ -2,7 +2,7 @@ mod audio;
 mod renderer;
 mod utils;
 
-use audio::{OutputCapture, SourcePipe};
+use audio::{AudioAnalyzer, OutputCapture, SourcePipe};
 use nannou::prelude::*;
 use renderer::{FeedbackRenderer, Renderer, Resolution};
 use std::cell::RefCell;
@@ -24,6 +24,7 @@ fn main() {
 
 struct Model {
     source: SourcePipe,
+    analyzer: AudioAnalyzer,
     renderer: Renderer,
     output_capture: OutputCapture,
     feedback: RefCell<FeedbackRenderer>,
@@ -64,6 +65,7 @@ fn model(app: &App) -> Model {
 
     Model {
         source: SourcePipe::new(),
+        analyzer: AudioAnalyzer::new(),
         renderer: Renderer::with_cycling(),
         output_capture: OutputCapture::new(),
         feedback: RefCell::new(feedback),
@@ -71,15 +73,18 @@ fn model(app: &App) -> Model {
 }
 
 fn update(app: &App, model: &mut Model, _update: Update) {
-    let frame = model.source.stream();
+    let samples = model.source.stream();
 
-    // Debug: print max sample value every second
+    // Analyze audio (single FFT for all visualizations)
+    let analysis = model.analyzer.analyze(&samples);
+
+    // Debug: print energy every second
     if app.elapsed_frames() % 60 == 0 {
-        let max_sample = frame.samples.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
-        println!("Max sample: {:.6}", max_sample);
+        println!("Energy: {:.2} | Bass: {:.2} | Mids: {:.2} | Treble: {:.2}",
+            analysis.energy, analysis.bass, analysis.mids, analysis.treble);
     }
 
-    model.renderer.update(&frame.samples, frame.transition_detected);
+    model.renderer.update(&analysis);
 }
 
 fn view(app: &App, model: &Model, frame: Frame) {

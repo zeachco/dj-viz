@@ -1,32 +1,36 @@
 use super::Visualization;
 use nannou::prelude::*;
-use num_complex::Complex;
-use rustfft::FftPlanner;
 
-use crate::audio::BUFFER_SIZE;
+use crate::audio::{AudioAnalysis, NUM_BANDS};
 
-const FFT_SIZE: usize = BUFFER_SIZE;
 const HISTORY_SIZE: usize = if cfg!(debug_assertions) { 100 } else { 512 };
-const DISPLAY_BINS: usize = if cfg!(debug_assertions) { 64 } else { 256 };
+/// Number of visual bins to display (interpolated from NUM_BANDS)
+const DISPLAY_BINS: usize = if cfg!(debug_assertions) { 32 } else { 64 };
 
 pub struct Spectrogram {
-    history: Vec<Vec<f32>>,
-    fft_planner: FftPlanner<f32>,
-    fft_window: Vec<f32>,
+    /// History of band values for scrolling display
+    history: Vec<[f32; NUM_BANDS]>,
 }
 
 impl Spectrogram {
     pub fn new() -> Self {
-        // Create Hann window for FFT
-        let fft_window: Vec<f32> = (0..FFT_SIZE)
-            .map(|i| 0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / FFT_SIZE as f32).cos()))
-            .collect();
-
         Self {
-            history: vec![vec![0.0; FFT_SIZE / 2]; HISTORY_SIZE],
-            fft_planner: FftPlanner::new(),
-            fft_window,
+            history: vec![[0.0; NUM_BANDS]; HISTORY_SIZE],
         }
+    }
+
+    /// Interpolate from NUM_BANDS to a specific display bin
+    fn interpolate_band(bands: &[f32; NUM_BANDS], bin_idx: usize) -> f32 {
+        // Map display bin to band position with log-like scaling for bass emphasis
+        let normalized = bin_idx as f32 / (DISPLAY_BINS - 1) as f32;
+        let scaled = normalized.powf(1.5); // Slight emphasis on lower frequencies
+        let band_pos = scaled * (NUM_BANDS - 1) as f32;
+
+        let low_band = (band_pos as usize).min(NUM_BANDS - 1);
+        let high_band = (low_band + 1).min(NUM_BANDS - 1);
+        let t = band_pos - low_band as f32;
+
+        bands[low_band] * (1.0 - t) + bands[high_band] * t
     }
 
     fn magnitude_to_color(mag: f32) -> Srgba<u8> {
@@ -72,38 +76,10 @@ impl Spectrogram {
 }
 
 impl Visualization for Spectrogram {
-    fn update(&mut self, samples: &[f32]) {
-        // Apply window function
-        let windowed: Vec<f32> = samples
-            .iter()
-            .zip(self.fft_window.iter())
-            .map(|(s, w)| s * w)
-            .collect();
-
-        // Perform FFT
-        let fft = self.fft_planner.plan_fft_forward(FFT_SIZE);
-        let mut buffer: Vec<Complex<f32>> = windowed
-            .iter()
-            .map(|&s| Complex::new(s, 0.0))
-            .collect();
-
-        fft.process(&mut buffer);
-
-        // Calculate magnitude spectrum (only first half - positive frequencies)
-        let magnitudes: Vec<f32> = buffer[..FFT_SIZE / 2]
-            .iter()
-            .map(|c| {
-                let mag = c.norm() / FFT_SIZE as f32;
-                // Convert to dB scale, normalize to 0-1
-                let db = 20.0 * (mag + 1e-10).log10();
-                // Map -80dB to 0dB range to 0-1
-                ((db + 80.0) / 80.0).clamp(0.0, 1.0)
-            })
-            .collect();
-
+    fn update(&mut self, analysis: &AudioAnalysis) {
         // Add to history (scroll left)
         self.history.remove(0);
-        self.history.push(magnitudes);
+        self.history.push(analysis.bands);
     }
 
     fn draw(&self, draw: &Draw, bounds: Rect) {
@@ -137,10 +113,9 @@ impl Visualization for Spectrogram {
                 let column = &self.history[col_idx];
                 let x = bounds.right() - (i as f32 + 0.5) * col_width;
 
-                for y_idx in 0..DISPLAY_BINS {
-                    let bin_idx = y_idx * (FFT_SIZE / 2) / DISPLAY_BINS;
-                    let magnitude = column.get(bin_idx).copied().unwrap_or(0.0);
-                    let y = bounds.bottom() + (y_idx as f32 + 0.5) * bin_size;
+                for bin_idx in 0..DISPLAY_BINS {
+                    let magnitude = Self::interpolate_band(column, bin_idx);
+                    let y = bounds.bottom() + (bin_idx as f32 + 0.5) * bin_size;
 
                     let color = Self::magnitude_to_color(magnitude);
                     draw.rect()
@@ -163,10 +138,9 @@ impl Visualization for Spectrogram {
                 let column = &self.history[col_idx];
                 let y = bounds.bottom() + (i as f32 + 0.5) * col_height;
 
-                for x_idx in 0..DISPLAY_BINS {
-                    let bin_idx = x_idx * (FFT_SIZE / 2) / DISPLAY_BINS;
-                    let magnitude = column.get(bin_idx).copied().unwrap_or(0.0);
-                    let x = bounds.left() + (x_idx as f32 + 0.5) * bin_size;
+                for bin_idx in 0..DISPLAY_BINS {
+                    let magnitude = Self::interpolate_band(column, bin_idx);
+                    let x = bounds.left() + (bin_idx as f32 + 0.5) * bin_size;
 
                     let color = Self::magnitude_to_color(magnitude);
                     draw.rect()
@@ -189,10 +163,9 @@ impl Visualization for Spectrogram {
                 let column = &self.history[col_idx];
                 let x = bounds.left() + (i as f32 + 0.5) * col_width;
 
-                for y_idx in 0..DISPLAY_BINS {
-                    let bin_idx = y_idx * (FFT_SIZE / 2) / DISPLAY_BINS;
-                    let magnitude = column.get(bin_idx).copied().unwrap_or(0.0);
-                    let y = bounds.top() - (y_idx as f32 + 0.5) * bin_size;
+                for bin_idx in 0..DISPLAY_BINS {
+                    let magnitude = Self::interpolate_band(column, bin_idx);
+                    let y = bounds.top() - (bin_idx as f32 + 0.5) * bin_size;
 
                     let color = Self::magnitude_to_color(magnitude);
                     draw.rect()
@@ -215,10 +188,9 @@ impl Visualization for Spectrogram {
                 let column = &self.history[col_idx];
                 let y = bounds.top() - (i as f32 + 0.5) * col_height;
 
-                for x_idx in 0..DISPLAY_BINS {
-                    let bin_idx = x_idx * (FFT_SIZE / 2) / DISPLAY_BINS;
-                    let magnitude = column.get(bin_idx).copied().unwrap_or(0.0);
-                    let x = bounds.right() - (x_idx as f32 + 0.5) * bin_size;
+                for bin_idx in 0..DISPLAY_BINS {
+                    let magnitude = Self::interpolate_band(column, bin_idx);
+                    let x = bounds.right() - (bin_idx as f32 + 0.5) * bin_size;
 
                     let color = Self::magnitude_to_color(magnitude);
                     draw.rect()

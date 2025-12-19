@@ -6,6 +6,8 @@ pub mod squares;
 use nannou::prelude::*;
 use rand::Rng;
 
+use crate::audio::AudioAnalysis;
+
 pub use feedback::FeedbackRenderer;
 pub use solar_beat::SolarBeat;
 pub use spectrogram::Spectrogram;
@@ -13,8 +15,8 @@ pub use squares::Squares;
 
 /// Trait that all visualizations must implement
 pub trait Visualization {
-    /// Update the visualization state with new audio samples
-    fn update(&mut self, samples: &[f32]);
+    /// Update the visualization state with pre-computed audio analysis
+    fn update(&mut self, analysis: &AudioAnalysis);
 
     /// Draw the visualization
     fn draw(&self, draw: &Draw, bounds: Rect);
@@ -120,7 +122,7 @@ impl Renderer {
         }
     }
 
-    pub fn update(&mut self, samples: &[f32], transition_detected: bool) {
+    pub fn update(&mut self, analysis: &AudioAnalysis) {
         // Update cooldowns
         if self.cooldown > 0 {
             self.cooldown -= 1;
@@ -133,7 +135,7 @@ impl Renderer {
         }
 
         // Check for visualization switch if multiple visualizations and cooldown expired
-        if self.visualizations.len() > 1 && self.cooldown == 0 && transition_detected {
+        if self.visualizations.len() > 1 && self.cooldown == 0 && analysis.transition_detected {
             // Switch to a random different visualization
             let mut rng = rand::rng();
             let new_idx = loop {
@@ -147,10 +149,8 @@ impl Renderer {
             println!("Switched to visualization {}", self.current_idx);
         }
 
-        // Update all visualizations to keep them in sync
-        for viz in &mut self.visualizations {
-            viz.update(samples);
-        }
+        // Only update the active visualization (performance optimization)
+        self.visualizations[self.current_idx].update(analysis);
     }
 
     pub fn draw(&self, draw: &Draw, bounds: Rect) {
