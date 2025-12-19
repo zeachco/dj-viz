@@ -1,6 +1,7 @@
 pub mod feedback;
 pub mod solar_beat;
 pub mod spectrogram;
+pub mod squares;
 
 use nannou::prelude::*;
 use num_complex::Complex;
@@ -12,6 +13,7 @@ use crate::audio::BUFFER_SIZE;
 pub use feedback::FeedbackRenderer;
 pub use solar_beat::SolarBeat;
 pub use spectrogram::Spectrogram;
+pub use squares::Squares;
 
 /// Trait that all visualizations must implement
 pub trait Visualization {
@@ -96,19 +98,25 @@ impl Renderer {
         Self::new(Box::new(SolarBeat::new()))
     }
 
-    /// Creates a renderer that cycles between spectrogram and solar beat
-    /// when high frequencies are loud
+    /// Creates a renderer that cycles between visualizations
+    /// when high frequencies are loud, starting with a random one
     pub fn with_cycling() -> Self {
         let fft_window: Vec<f32> = (0..FFT_SIZE)
             .map(|i| 0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / FFT_SIZE as f32).cos()))
             .collect();
 
+        let visualizations: Vec<Box<dyn Visualization>> = vec![
+            Box::new(SolarBeat::new()),
+            Box::new(Spectrogram::new()),
+            Box::new(Squares::new()),
+        ];
+
+        let mut rng = rand::rng();
+        let current_idx = rng.random_range(0..visualizations.len());
+
         Self {
-            visualizations: vec![
-                Box::new(SolarBeat::new()),
-                Box::new(Spectrogram::new()),
-            ],
-            current_idx: 0,
+            visualizations,
+            current_idx,
             fft_planner: FftPlanner::new(),
             fft_window,
             cooldown: 0,
@@ -143,10 +151,8 @@ impl Renderer {
 
         // Perform FFT
         let fft = self.fft_planner.plan_fft_forward(FFT_SIZE);
-        let mut buffer: Vec<Complex<f32>> = windowed
-            .iter()
-            .map(|&s| Complex::new(s, 0.0))
-            .collect();
+        let mut buffer: Vec<Complex<f32>> =
+            windowed.iter().map(|&s| Complex::new(s, 0.0)).collect();
 
         fft.process(&mut buffer);
 
