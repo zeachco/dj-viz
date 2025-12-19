@@ -120,7 +120,7 @@ impl Visualization for Spectrogram {
                     let color = Self::magnitude_to_color(magnitude);
                     draw.rect()
                         .x_y(x, y)
-                        .w_h(col_width + 1.0, bin_size + 1.0)
+                        .w_h(col_width - 2.0, bin_size - 2.0)
                         .color(color);
                 }
             }
@@ -145,7 +145,7 @@ impl Visualization for Spectrogram {
                     let color = Self::magnitude_to_color(magnitude);
                     draw.rect()
                         .x_y(x, y)
-                        .w_h(bin_size + 1.0, col_height + 1.0)
+                        .w_h(bin_size - 2.0, col_height - 2.0)
                         .color(color);
                 }
             }
@@ -170,7 +170,7 @@ impl Visualization for Spectrogram {
                     let color = Self::magnitude_to_color(magnitude);
                     draw.rect()
                         .x_y(x, y)
-                        .w_h(col_width + 1.0, bin_size + 1.0)
+                        .w_h(col_width - 2.0, bin_size - 2.0)
                         .color(color);
                 }
             }
@@ -195,7 +195,7 @@ impl Visualization for Spectrogram {
                     let color = Self::magnitude_to_color(magnitude);
                     draw.rect()
                         .x_y(x, y)
-                        .w_h(bin_size + 1.0, col_height + 1.0)
+                        .w_h(bin_size - 2.0, col_height - 2.0)
                         .color(color);
                 }
             }

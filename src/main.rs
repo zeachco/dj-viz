@@ -89,11 +89,14 @@ fn update(app: &App, model: &mut Model, _update: Update) {
     // Update feedback zoom based on beat intensity (bass + energy peaks)
     {
         let mut feedback = model.feedback.borrow_mut();
-        // Sine wave oscillation over 12 seconds: zooms in and out
-        let phase = app.time * std::f32::consts::TAU / 12.0;
-        let base_scale = 1.0 + 0.003 * phase.sin();
-        // Add beat-reactive boost on top
-        feedback.scale = base_scale + analysis.bass * 0.015 + if analysis.peak { 0.005 } else { 0.0 };
+        // Sine wave oscillation over 30 seconds: zooms in and out
+        let phase = app.time * std::f32::consts::TAU / 30.0;
+        let direction = phase.sin(); // -1 to 1
+        // Base zoom follows sine wave
+        let base_offset = 0.006 * direction;
+        // Bass amplifies the current direction (zoom in faster or out faster)
+        let bass_boost = analysis.bass * 0.012 * direction;
+        feedback.scale = 1.0 + base_offset + bass_boost;
     }
 }
 

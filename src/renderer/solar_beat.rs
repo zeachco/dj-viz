@@ -49,7 +49,7 @@ impl SolarBeat {
             (r * 255.0) as u8,
             (g * 255.0) as u8,
             (b * 255.0) as u8,
-            255,
+            128, // 50% transparency for trail effect
         )
     }
 
@@ -151,8 +151,8 @@ impl SolarBeat {
 
             let color = Self::magnitude_to_color(magnitude);
 
-            // Line thickness based on magnitude
-            let thickness = 1.0 + magnitude * 3.0;
+            // Line thickness based on magnitude (2x wider)
+            let thickness = 2.0 + magnitude * 6.0;
 
             // Draw outward line
             draw.line()
