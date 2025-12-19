@@ -1,11 +1,137 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, Stream, StreamConfig};
+use num_complex::Complex;
+use rustfft::FftPlanner;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::utils::Config;
 
 pub const BUFFER_SIZE: usize = 1024;
+
+// Transition detection constants
+const HISTORY_SIZE: usize = 180; // ~3 seconds at 60fps
+const TRANSITION_THRESHOLD: f32 = 0.3; // Minimum difference to trigger transition
+
+/// Audio stream result with samples and transition detection
+pub struct AudioFrame {
+    pub samples: Vec<f32>,
+    pub transition_detected: bool,
+}
+
+/// Tracks audio metrics over time to detect transitions
+pub struct TransitionTracker {
+    /// Rolling history of RMS values (volume)
+    volume_history: Vec<f32>,
+    /// Rolling history of high-frequency energy ratio
+    freq_history: Vec<f32>,
+    /// Index for circular buffer
+    history_idx: usize,
+    /// FFT planner for frequency analysis
+    fft_planner: FftPlanner<f32>,
+    /// Hann window for FFT
+    fft_window: Vec<f32>,
+    /// Whether we're currently in a "high" state (for edge detection)
+    was_high_volume: bool,
+    was_high_freq: bool,
+}
+
+impl TransitionTracker {
+    fn new() -> Self {
+        let fft_window: Vec<f32> = (0..BUFFER_SIZE)
+            .map(|i| 0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / BUFFER_SIZE as f32).cos()))
+            .collect();
+
+        Self {
+            volume_history: vec![0.0; HISTORY_SIZE],
+            freq_history: vec![0.0; HISTORY_SIZE],
+            history_idx: 0,
+            fft_planner: FftPlanner::new(),
+            fft_window,
+            was_high_volume: false,
+            was_high_freq: false,
+        }
+    }
+
+    /// Update with new samples and return true if a transition was detected
+    fn update(&mut self, samples: &[f32]) -> bool {
+        // Calculate current RMS (volume)
+        let rms = (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
+
+        // Calculate high-frequency energy ratio using FFT
+        let freq_ratio = self.compute_high_freq_ratio(samples);
+
+        // Store in history
+        self.volume_history[self.history_idx] = rms;
+        self.freq_history[self.history_idx] = freq_ratio;
+        self.history_idx = (self.history_idx + 1) % HISTORY_SIZE;
+
+        // Calculate recent average (last ~0.5 seconds = 30 frames)
+        let recent_frames = 30;
+        let recent_volume = self.recent_average(&self.volume_history, recent_frames);
+        let recent_freq = self.recent_average(&self.freq_history, recent_frames);
+
+        // Calculate longer-term average (full 3 seconds)
+        let long_volume: f32 = self.volume_history.iter().sum::<f32>() / HISTORY_SIZE as f32;
+        let long_freq: f32 = self.freq_history.iter().sum::<f32>() / HISTORY_SIZE as f32;
+
+        // Detect transitions - significant difference between recent and long-term
+        let volume_diff = (recent_volume - long_volume).abs();
+        let freq_diff = (recent_freq - long_freq).abs();
+
+        // Normalize differences relative to the signal level
+        let norm_volume_diff = if long_volume > 0.01 { volume_diff / long_volume } else { volume_diff * 10.0 };
+        let norm_freq_diff = freq_diff; // Already 0-1 range
+
+        // Check for state transitions (edge detection)
+        let is_high_volume = recent_volume > long_volume * 1.3;
+        let is_high_freq = recent_freq > long_freq + 0.15;
+
+        let volume_transition = is_high_volume != self.was_high_volume && norm_volume_diff > TRANSITION_THRESHOLD;
+        let freq_transition = is_high_freq != self.was_high_freq && norm_freq_diff > TRANSITION_THRESHOLD;
+
+        self.was_high_volume = is_high_volume;
+        self.was_high_freq = is_high_freq;
+
+        volume_transition || freq_transition
+    }
+
+    fn recent_average(&self, history: &[f32], frames: usize) -> f32 {
+        let mut sum = 0.0;
+        for i in 0..frames {
+            let idx = (self.history_idx + HISTORY_SIZE - 1 - i) % HISTORY_SIZE;
+            sum += history[idx];
+        }
+        sum / frames as f32
+    }
+
+    fn compute_high_freq_ratio(&mut self, samples: &[f32]) -> f32 {
+        // Apply window and prepare FFT buffer
+        let mut buffer: Vec<Complex<f32>> = samples
+            .iter()
+            .zip(self.fft_window.iter())
+            .map(|(s, w)| Complex::new(s * w, 0.0))
+            .collect();
+
+        // Perform FFT
+        let fft = self.fft_planner.plan_fft_forward(BUFFER_SIZE);
+        fft.process(&mut buffer);
+
+        // Calculate energy in frequency bands
+        let num_bins = BUFFER_SIZE / 2;
+        let mid_point = num_bins / 2;
+
+        let low_energy: f32 = buffer[1..mid_point].iter().map(|c| c.norm_sqr()).sum();
+        let high_energy: f32 = buffer[mid_point..num_bins].iter().map(|c| c.norm_sqr()).sum();
+
+        let total = low_energy + high_energy;
+        if total > 0.0 {
+            high_energy / total
+        } else {
+            0.0
+        }
+    }
+}
 
 pub struct DeviceInfo {
     pub device: cpal::Device,
@@ -21,6 +147,8 @@ pub struct SourcePipe {
     // Auto-gain normalization state
     smoothed_peak: f32,
     target_level: f32,
+    // Transition detection
+    transition_tracker: TransitionTracker,
 }
 
 impl SourcePipe {
@@ -73,6 +201,7 @@ impl SourcePipe {
             _stream: stream,
             smoothed_peak: 0.1, // Start with a reasonable default
             target_level: 0.5,  // Target peak level for normalization
+            transition_tracker: TransitionTracker::new(),
         }
     }
 
@@ -252,7 +381,7 @@ impl SourcePipe {
         self.devices = Self::collect_devices();
     }
 
-    pub fn stream(&mut self) -> Vec<f32> {
+    pub fn stream(&mut self) -> AudioFrame {
         let buffer = self.buffer.lock().unwrap().clone();
 
         // Calculate current peak level (absolute max)
@@ -272,6 +401,14 @@ impl SourcePipe {
         let gain = (self.target_level / safe_peak).clamp(0.5, 10.0);
 
         // Apply gain normalization
-        buffer.iter().map(|s| (s * gain).clamp(-1.0, 1.0)).collect()
+        let samples: Vec<f32> = buffer.iter().map(|s| (s * gain).clamp(-1.0, 1.0)).collect();
+
+        // Detect transitions based on normalized samples
+        let transition_detected = self.transition_tracker.update(&samples);
+
+        AudioFrame {
+            samples,
+            transition_detected,
+        }
     }
 }

@@ -71,15 +71,15 @@ fn model(app: &App) -> Model {
 }
 
 fn update(app: &App, model: &mut Model, _update: Update) {
-    let samples = model.source.stream();
+    let frame = model.source.stream();
 
     // Debug: print max sample value every second
     if app.elapsed_frames() % 60 == 0 {
-        let max_sample = samples.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+        let max_sample = frame.samples.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
         println!("Max sample: {:.6}", max_sample);
     }
 
-    model.renderer.update(&samples);
+    model.renderer.update(&frame.samples, frame.transition_detected);
 }
 
 fn view(app: &App, model: &Model, frame: Frame) {
