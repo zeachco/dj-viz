@@ -2,8 +2,8 @@ mod audio;
 mod renderer;
 mod utils;
 
-use nannou::prelude::*;
 use audio::{OutputCapture, SourcePipe};
+use nannou::prelude::*;
 use renderer::{FeedbackRenderer, Renderer, Resolution};
 use std::cell::RefCell;
 use std::env;
@@ -19,9 +19,7 @@ fn main() {
     // List all devices at startup
     SourcePipe::list_devices();
 
-    nannou::app(model)
-        .update(update)
-        .run();
+    nannou::app(model).update(update).run();
 }
 
 struct Model {
@@ -33,8 +31,10 @@ struct Model {
 
 fn model(app: &App) -> Model {
     let resolution = Resolution::current();
+    app.set_exit_on_escape(false);
 
-    let mut win = app.new_window()
+    let mut win = app
+        .new_window()
         .view(view)
         .key_pressed(key_pressed)
         .resized(resized)

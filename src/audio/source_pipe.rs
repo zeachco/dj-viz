@@ -1,6 +1,7 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::Stream;
+use cpal::{Device, Stream, StreamConfig};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use crate::utils::Config;
 
@@ -117,22 +118,41 @@ impl SourcePipe {
         devices
     }
 
-    fn build_stream(device_info: &DeviceInfo, audio_buffer: Arc<Mutex<Vec<f32>>>) -> Option<Stream> {
-        let config = if device_info.is_input {
-            device_info.device.default_input_config()
-        } else {
-            device_info.device.default_output_config()
-        };
+    fn device_timeout() -> Duration {
+        Duration::from_secs(Config::load().device_timeout_secs())
+    }
 
-        let config = match config {
-            Ok(c) => c,
-            Err(e) => {
+    /// Get device config with timeout (the config call often hangs on bad devices)
+    fn get_config_with_timeout(device: &Device, is_input: bool) -> Option<StreamConfig> {
+        let timeout = Self::device_timeout();
+        let device_clone = device.clone();
+
+        let (tx, rx) = std::sync::mpsc::channel();
+
+        std::thread::spawn(move || {
+            let config = if is_input {
+                device_clone.default_input_config()
+            } else {
+                device_clone.default_output_config()
+            };
+            let _ = tx.send(config);
+        });
+
+        match rx.recv_timeout(timeout) {
+            Ok(Ok(config)) => Some(config.into()),
+            Ok(Err(e)) => {
                 eprintln!("  Failed to get config: {}", e);
-                return None;
+                None
             }
-        };
+            Err(_) => {
+                eprintln!("  Device config timed out after {:?}", timeout);
+                None
+            }
+        }
+    }
 
-        let stream_config: cpal::StreamConfig = config.into();
+    fn build_stream(device_info: &DeviceInfo, audio_buffer: Arc<Mutex<Vec<f32>>>) -> Option<Stream> {
+        let stream_config = Self::get_config_with_timeout(&device_info.device, device_info.is_input)?;
         let channels = stream_config.channels as usize;
 
         let err_fn = |err| eprintln!("Audio stream error: {}", err);
@@ -210,11 +230,14 @@ impl SourcePipe {
     }
 
     /// Select a device by name (partial match, case-insensitive)
+    /// Matches against "name (input)" or "name (output)" format
     /// Returns Some((device_name, success)) if found and switched
     pub fn select_device_by_name(&mut self, name: &str) -> Option<(String, bool)> {
         let name_lower = name.to_lowercase();
         let index = self.devices.iter().position(|d| {
-            d.name.to_lowercase().contains(&name_lower)
+            let device_type = if d.is_input { "input" } else { "output" };
+            let full_name = format!("{} ({})", d.name, device_type).to_lowercase();
+            full_name.contains(&name_lower) || d.name.to_lowercase().contains(&name_lower)
         })?;
         self.select_device(index)
     }
