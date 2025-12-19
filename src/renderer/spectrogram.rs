@@ -1,5 +1,6 @@
 use super::Visualization;
 use nannou::prelude::*;
+use rand::Rng;
 
 use crate::audio::{AudioAnalysis, NUM_BANDS};
 
@@ -10,12 +11,20 @@ const DISPLAY_BINS: usize = if cfg!(debug_assertions) { 32 } else { 64 };
 pub struct Spectrogram {
     /// History of band values for scrolling display
     history: Vec<[f32; NUM_BANDS]>,
+    /// Beat-reactive shake offset
+    shake_x: f32,
+    shake_y: f32,
+    /// Beat-reactive rotation
+    rotation: f32,
 }
 
 impl Spectrogram {
     pub fn new() -> Self {
         Self {
             history: vec![[0.0; NUM_BANDS]; HISTORY_SIZE],
+            shake_x: 0.0,
+            shake_y: 0.0,
+            rotation: 0.0,
         }
     }
 
@@ -80,9 +89,28 @@ impl Visualization for Spectrogram {
         // Add to history (scroll left)
         self.history.remove(0);
         self.history.push(analysis.bands);
+
+        // Beat-reactive shake: trigger on bass hits
+        if analysis.bass > 0.4 {
+            let mut rng = rand::rng();
+            let intensity = analysis.bass * 15.0;
+            self.shake_x += rng.random_range(-1.0..1.0) * intensity;
+            self.shake_y += rng.random_range(-1.0..1.0) * intensity;
+            self.rotation += rng.random_range(-1.0..1.0) * analysis.bass * 0.03;
+        }
+
+        // Decay shake and rotation
+        self.shake_x *= 0.85;
+        self.shake_y *= 0.85;
+        self.rotation *= 0.92;
     }
 
     fn draw(&self, draw: &Draw, bounds: Rect) {
+        // Apply beat-reactive transform (shake + rotation)
+        let draw = draw
+            .x_y(self.shake_x, self.shake_y)
+            .rotate(self.rotation);
+
         let w = bounds.w();
         let h = bounds.h();
 
