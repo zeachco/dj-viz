@@ -90,6 +90,9 @@ pub struct Renderer {
     notification_frames: u32,
     /// When true, auto-cycling is disabled (user manually selected a visualization)
     locked: bool,
+    /// Debug visualization (CrtNumbers) - toggled with 'd' key
+    debug_viz: CrtNumbers,
+    debug_viz_visible: bool,
 }
 
 impl Renderer {
@@ -107,7 +110,6 @@ impl Renderer {
             Box::new(CrtPhosphor::new()),
             Box::new(BlackHole::new()),
             Box::new(GravityFlames::new()),
-            Box::new(CrtNumbers::new()),
         ];
 
         let mut rng = rand::rng();
@@ -124,6 +126,8 @@ impl Renderer {
             notification_text: None,
             notification_frames: 0,
             locked: false,
+            debug_viz: CrtNumbers::new(),
+            debug_viz_visible: false,
         }
     }
 
@@ -227,7 +231,6 @@ impl Renderer {
             7 => "CrtPhosphor",
             8 => "BlackHole",
             9 => "GravityFlames",
-            10 => "CrtNumbers",
             _ => "Unknown",
         }
     }
@@ -280,6 +283,9 @@ impl Renderer {
         for &idx in &self.overlay_indices {
             self.visualizations[idx].update(analysis);
         }
+
+        // Always update debug viz (even if not visible, so it's ready when toggled)
+        self.debug_viz.update(analysis);
     }
 
     /// Draw the primary visualization
@@ -309,6 +315,20 @@ impl Renderer {
                 .x_y(0.0, bounds.top() - 30.0)
                 .color(rgba(1.0, 1.0, 1.0, alpha))
                 .font_size(24);
+        }
+    }
+
+    /// Toggle debug visualization visibility
+    pub fn toggle_debug_viz(&mut self) {
+        self.debug_viz_visible = !self.debug_viz_visible;
+        let status = if self.debug_viz_visible { "ON" } else { "OFF" };
+        println!("Debug visualization: {}", status);
+    }
+
+    /// Draw debug visualization (CrtNumbers) if visible
+    pub fn draw_debug_viz(&self, draw: &Draw, bounds: Rect) {
+        if self.debug_viz_visible {
+            self.debug_viz.draw(draw, bounds);
         }
     }
 }

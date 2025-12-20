@@ -140,6 +140,11 @@ fn view(app: &App, model: &Model, frame: Frame) {
         );
     }
 
+    // Draw debug visualization directly to frame (not through feedback)
+    let debug_draw = app.draw();
+    model.renderer.draw_debug_viz(&debug_draw, bounds);
+    debug_draw.to_frame(app, &frame).unwrap();
+
     // Draw notification overlay directly to frame (not through feedback)
     let notification_draw = app.draw();
     model.renderer.draw_notification(&notification_draw, bounds);
@@ -297,6 +302,12 @@ fn key_pressed(app: &App, model: &mut Model, key: Key) {
     // Normal mode: start search with /
     if key == Key::Slash {
         model.output_capture.start_search();
+        return;
+    }
+
+    // Toggle debug visualization with 'd'
+    if key == Key::D {
+        model.renderer.toggle_debug_viz();
         return;
     }
 

@@ -129,13 +129,20 @@ impl Visualization for CrtNumbers {
         let bounds_w = bounds.w();
         let bounds_h = bounds.h();
 
+        // Draw semi-transparent black background
+        draw.rect()
+            .x_y(center.x, center.y)
+            .w_h(bounds_w, bounds_h)
+            .color(srgba(0u8, 0u8, 0u8, 180u8));
+
         // Layout configuration
         let column_spacing = bounds_w / 4.0;
         let row_spacing = 30.0;
         let start_y = bounds.top() - 50.0;
+        let indicator_width = 150.0; // Max width for value indicators
 
-        // Prepare text data: (label, value, x, y)
-        let mut text_data: Vec<(String, String, f32, f32)> = Vec::new();
+        // Prepare text data: (label, value_str, x, y, numeric_value)
+        let mut text_data: Vec<(String, String, f32, f32, Option<f32>)> = Vec::new();
 
         // Column 1: Frequency bands
         let col1_x = center.x - column_spacing;
@@ -145,6 +152,7 @@ impl Visualization for CrtNumbers {
                 Self::format_value(self.display_bands[i]),
                 col1_x,
                 start_y - row_spacing * i as f32,
+                Some(self.display_bands[i]),
             ));
         }
 
@@ -155,18 +163,21 @@ impl Visualization for CrtNumbers {
             Self::format_value(self.display_bass),
             col2_x,
             start_y,
+            Some(self.display_bass),
         ));
         text_data.push((
             "Mids".to_string(),
             Self::format_value(self.display_mids),
             col2_x,
             start_y - row_spacing,
+            Some(self.display_mids),
         ));
         text_data.push((
             "Treble".to_string(),
             Self::format_value(self.display_treble),
             col2_x,
             start_y - row_spacing * 2.0,
+            Some(self.display_treble),
         ));
 
         // Column 3: Energy/Transition
@@ -176,6 +187,7 @@ impl Visualization for CrtNumbers {
             Self::format_value(self.display_energy),
             col3_x,
             start_y,
+            Some(self.display_energy),
         ));
         text_data.push((
             "Transition".to_string(),
@@ -186,6 +198,7 @@ impl Visualization for CrtNumbers {
             },
             col3_x,
             start_y - row_spacing,
+            None, // Boolean, no indicator
         ));
 
         // Draw blur layers (behind text)
@@ -194,7 +207,7 @@ impl Visualization for CrtNumbers {
             let alpha_scale = BLUR_ALPHA_DECAY.powi(blur_idx as i32);
             let base_alpha = 100.0 * self.glow_intensity * alpha_scale;
 
-            for (label, value, x, y) in &text_data {
+            for (label, value, x, y, _) in &text_data {
                 let text_str = format!("{}: {}", label, value);
                 let color = self.phosphor_color(base_alpha);
 
@@ -219,7 +232,7 @@ impl Visualization for CrtNumbers {
         }
 
         // Draw RGB fringing (chromatic aberration)
-        for (label, value, x, y) in &text_data {
+        for (label, value, x, y, _) in &text_data {
             let text_str = format!("{}: {}", label, value);
 
             // Red channel (shifted left)
@@ -245,13 +258,30 @@ impl Visualization for CrtNumbers {
         }
 
         // Draw main text (bright phosphor green)
-        for (label, value, x, y) in &text_data {
+        for (label, value, x, y, _) in &text_data {
             let text_str = format!("{}: {}", label, value);
             let color = self.phosphor_color(255.0 * self.glow_intensity);
             draw.text(&text_str)
                 .x_y(*x, *y)
                 .color(color)
                 .font_size(FONT_SIZE);
+        }
+
+        // Draw debug indicator lines below numeric values
+        for (_, _, x, y, numeric_value) in &text_data {
+            if let Some(value) = numeric_value {
+                let clamped_value = value.clamp(0.0, 1.0);
+                let line_length = clamped_value * indicator_width;
+                let line_y = y - 15.0; // A few pixels below text to avoid overlap
+
+                // Draw 2.5px greenish line (matching phosphor color)
+                let line_color = self.phosphor_color(220.0 * self.glow_intensity);
+                draw.line()
+                    .start(pt2(*x - indicator_width / 2.0, line_y))
+                    .end(pt2(*x - indicator_width / 2.0 + line_length, line_y))
+                    .weight(2.5)
+                    .color(line_color);
+            }
         }
 
         // Draw scanlines (horizontal lines across entire screen)

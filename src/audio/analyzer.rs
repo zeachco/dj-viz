@@ -10,8 +10,9 @@ use std::sync::Arc;
 /// Number of frequency bands for visualization
 pub const NUM_BANDS: usize = 8;
 
-/// FFT size - smaller than buffer for better performance
-const FFT_SIZE: usize = 512;
+/// FFT size - needs to be large enough for good low-frequency resolution
+/// At 44.1kHz: 2048 gives ~21.5 Hz bins (good for 20-60 Hz bass range)
+const FFT_SIZE: usize = 2048;
 
 /// Frequency band boundaries (Hz) for 44.1kHz sample rate
 /// Sub-bass, Bass, Low-mid, Mid, Upper-mid, Presence, Brilliance, Air
@@ -155,8 +156,9 @@ impl AudioAnalyzer {
                 // Normalize and convert to dB-ish scale
                 let avg_energy = energy / (high - low) as f32;
                 let db = 10.0 * (avg_energy + 1e-10).log10();
-                // Map roughly -60dB to 0dB -> 0 to 1
-                bands_raw[i] = ((db + 60.0) / 60.0).clamp(0.0, 1.0);
+                // Map -80dB to +40dB -> 0 to 1 (120dB dynamic range)
+                // Lower frequencies naturally have more energy, so we need wide range
+                bands_raw[i] = ((db + 80.0) / 120.0).clamp(0.0, 1.0);
             }
         }
 
