@@ -32,10 +32,47 @@ cargo run -- --audio-info  # Print audio device info
 |-----|--------|
 | `Space` | Cycle visualization |
 | `0-9` | Select audio device (Shift+0-9 for devices 10-19) |
-| `/` | Open PipeWire stream search |
+| `/` | Open device search |
 | `q` | Exit application |
 
-### PipeWire Stream Search
+### Device Search
+
+Press `/` to open an interactive device search interface:
+
+| Key | Action |
+|-----|--------|
+| Type | Filter devices by name |
+| `Backspace` | Delete last character |
+| `Up/Down` | Navigate results |
+| `Enter` | Select device |
+| `Escape` | Cancel search |
+
+### macOS Audio Capture Setup
+
+**⚠️ macOS Disclaimer:** Unlike Linux, macOS does not natively support capturing system audio (loopback). You must install a virtual audio device:
+
+```bash
+brew install blackhole-2ch
+```
+
+After installation, **restart the Core Audio service** to make BlackHole visible:
+
+```bash
+sudo killall coreaudiod
+```
+
+Core Audio will automatically restart in a few seconds. If BlackHole still doesn't appear, restart your Mac.
+
+Then create a **Multi-Output Device** in Audio MIDI Setup:
+1. Open `/Applications/Utilities/Audio MIDI Setup.app`
+2. Click `+` → "Create Multi-Output Device"
+3. Check both your speakers/headphones AND BlackHole 2ch
+4. Set your speakers as primary (checkmark on the left)
+5. Set this Multi-Output Device as your system default output
+
+Now dj-viz can capture system audio by selecting BlackHole as the input device (press `/` and search for "blackhole").
+
+### PipeWire Stream Search (Linux)
 
 Press `/` to open the stream search interface for capturing audio from specific applications (like Spotify):
 
