@@ -39,6 +39,12 @@ pub struct AudioAnalysis {
     pub energy_diff: f32,
     /// Whether zoom direction should shift (triggered when energy_diff crosses ±0.15)
     pub zoom_direction_shift: bool,
+    /// Tracked minimum values for each band (for normalization)
+    pub band_mins: [f32; NUM_BANDS],
+    /// Tracked maximum values for each band (for normalization)
+    pub band_maxs: [f32; NUM_BANDS],
+    /// Estimated tempo in beats per minute (smoothed)
+    pub bpm: f32,
 }
 
 impl Default for AudioAnalysis {
@@ -54,6 +60,7 @@ impl Default for AudioAnalysis {
             zoom_direction_shift: false,
             band_mins: [0.0; NUM_BANDS],
             band_maxs: [0.0; NUM_BANDS],
+            bpm: 0.0,
         }
     }
 }
@@ -90,6 +97,12 @@ pub struct AudioAnalyzer {
     // Zoom direction shift detection
     prev_energy_diff: f32,
 
+    // BPM detection
+    beat_times: Vec<f32>, // Timestamps of recent beats (in seconds)
+    last_beat_time: f32,  // Last detected beat time
+    smoothed_bpm: f32,    // Smoothed BPM estimate
+    frame_time: f32,      // Accumulated time for timestamping
+
     // Frame skipping for performance
     frame_count: u32,
     last_analysis: AudioAnalysis,
@@ -120,6 +133,7 @@ impl AudioAnalyzer {
         }
 
         const HISTORY_SIZE: usize = 180; // ~3 seconds at 60fps
+        const BPM_HISTORY_SIZE: usize = 8; // Track last 8 beats for BPM calculation
 
         Self {
             fft,
@@ -138,6 +152,10 @@ impl AudioAnalyzer {
             band_mins: [0.0; NUM_BANDS],
             band_maxs: [0.0; NUM_BANDS],
             prev_energy_diff: 0.0,
+            beat_times: Vec::with_capacity(BPM_HISTORY_SIZE),
+            last_beat_time: 0.0,
+            smoothed_bpm: 0.0,
+            frame_time: 0.0,
             frame_count: 0,
             last_analysis: AudioAnalysis::default(),
         }
@@ -147,6 +165,10 @@ impl AudioAnalyzer {
     /// Returns cached result if called multiple times per frame.
     pub fn analyze(&mut self, samples: &[f32]) -> AudioAnalysis {
         self.frame_count = self.frame_count.wrapping_add(1);
+
+        // Update frame time (assuming ~60fps = 0.0167s per frame)
+        const FRAME_DELTA: f32 = 1.0 / 60.0;
+        self.frame_time += FRAME_DELTA;
 
         // Take FFT_SIZE samples from the input (or pad with zeros)
         let sample_count = samples.len().min(FFT_SIZE);
@@ -253,6 +275,46 @@ impl AudioAnalyzer {
         // Transition detection
         let transition_detected = self.detect_transition(energy_raw, &bands_raw);
 
+        // BPM detection - update when we detect a transition
+        if transition_detected {
+            let time_since_last_beat = self.frame_time - self.last_beat_time;
+
+            // Only count as a beat if enough time has passed (avoid double-counting)
+            // Minimum interval: 60bpm = 1 beat per second, so min 0.3s to allow up to 200bpm
+            const MIN_BEAT_INTERVAL: f32 = 0.3;
+            if time_since_last_beat >= MIN_BEAT_INTERVAL {
+                self.beat_times.push(self.frame_time);
+                self.last_beat_time = self.frame_time;
+
+                // Keep only last 8 beats
+                const MAX_BEAT_HISTORY: usize = 8;
+                if self.beat_times.len() > MAX_BEAT_HISTORY {
+                    self.beat_times.remove(0);
+                }
+
+                // Calculate BPM from intervals between beats
+                if self.beat_times.len() >= 2 {
+                    let mut intervals = Vec::new();
+                    for i in 1..self.beat_times.len() {
+                        intervals.push(self.beat_times[i] - self.beat_times[i - 1]);
+                    }
+
+                    // Average interval in seconds
+                    let avg_interval: f32 = intervals.iter().sum::<f32>() / intervals.len() as f32;
+
+                    // Convert to BPM (beats per minute)
+                    let instant_bpm = 60.0 / avg_interval;
+
+                    // Smooth the BPM (slow adjustment to avoid jitter)
+                    if self.smoothed_bpm == 0.0 {
+                        self.smoothed_bpm = instant_bpm;
+                    } else {
+                        self.smoothed_bpm = self.smoothed_bpm * 0.85 + instant_bpm * 0.15;
+                    }
+                }
+            }
+        }
+
         // Compute aggregate values
         let bass = (self.smoothed_bands[0] + self.smoothed_bands[1]) / 2.0;
         let mids = (self.smoothed_bands[2] + self.smoothed_bands[3] + self.smoothed_bands[4]) / 3.0;
@@ -270,6 +332,7 @@ impl AudioAnalyzer {
             zoom_direction_shift,
             band_mins: self.band_mins,
             band_maxs: self.band_maxs,
+            bpm: self.smoothed_bpm,
         };
 
         self.last_analysis.clone()
