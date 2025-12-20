@@ -11,7 +11,7 @@ pub mod gravity_flames;
 pub mod kaleidoscope;
 pub mod lava_blobs;
 pub mod solar_beat;
-pub mod spectrogram;
+pub mod spectro_road;
 pub mod squares;
 pub mod tesla_coil;
 pub mod vhs_distortion;
@@ -29,7 +29,7 @@ pub use gravity_flames::GravityFlames;
 pub use kaleidoscope::Kaleidoscope;
 pub use lava_blobs::LavaBlobs;
 pub use solar_beat::SolarBeat;
-pub use spectrogram::Spectrogram;
+pub use spectro_road::SpectroRoad;
 pub use squares::Squares;
 pub use tesla_coil::TeslaCoil;
 pub use vhs_distortion::VhsDistortion;
@@ -101,7 +101,7 @@ impl Renderer {
     pub fn with_cycling() -> Self {
         let visualizations: Vec<Box<dyn Visualization>> = vec![
             Box::new(SolarBeat::new()),
-            Box::new(Spectrogram::new()),
+            Box::new(SpectroRoad::new()),
             Box::new(Squares::new()),
             Box::new(TeslaCoil::new()),
             Box::new(Kaleidoscope::new()),
@@ -222,7 +222,7 @@ impl Renderer {
     fn visualization_name(idx: usize) -> &'static str {
         match idx {
             0 => "SolarBeat",
-            1 => "Spectrogram",
+            1 => "SpectroRoad",
             2 => "Squares",
             3 => "TeslaCoil",
             4 => "Kaleidoscope",

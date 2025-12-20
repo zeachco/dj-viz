@@ -26,7 +26,7 @@ src/
 │   └── source_pipe.rs
 ├── renderer/        # OUTPUT: visualization layer
 │   ├── mod.rs
-│   ├── spectrogram.rs
+│   ├── spectro_road.rs
 │   └── solar_beat.rs
 └── utils/           # Shared utilities (config, diagnostics)
 ```
@@ -41,7 +41,7 @@ Future input layers (e.g., webcam) should follow the same pattern as `audio/`.
 
 - **mod.rs** - `Renderer` orchestrates visualizations, performs FFT for high-frequency detection, auto-cycles between visualizations when treble peaks
 - `Visualization` trait (`renderer/mod.rs:15-21`): `update(&mut self, samples: &[f32])` + `draw(&self, draw: &Draw, bounds: Rect)`
-- **spectrogram.rs** - scrolling frequency/time heatmap with FFT history
+- **spectro_road.rs** - scrolling frequency/time road-like heatmap with FFT history
 - **solar_beat.rs** - radial frequency display with particle effects
 
 ### Configuration

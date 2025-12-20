@@ -1,6 +1,6 @@
 //! Scrolling frequency-time heatmap visualization.
 //!
-//! Displays audio frequency content over time as a colorful 2D spectrogram with
+//! Displays audio frequency content over time as a colorful 2D road-like spectrogram with
 //! beat-reactive shake and rotation effects.
 
 use super::Visualization;
@@ -13,7 +13,7 @@ const HISTORY_SIZE: usize = if cfg!(debug_assertions) { 50 } else { 200 };
 /// Number of visual bins to display (interpolated from NUM_BANDS)
 const DISPLAY_BINS: usize = if cfg!(debug_assertions) { 16 } else { 24 };
 
-pub struct Spectrogram {
+pub struct SpectroRoad {
     /// History of band values for scrolling display
     history: Vec<[f32; NUM_BANDS]>,
     /// Beat-reactive shake offset
@@ -27,9 +27,11 @@ pub struct Spectrogram {
     bass: f32,
     /// Frame counter for time-based effects
     frame_count: u32,
+    /// Counter to slow down history scrolling
+    shift_counter: u32,
 }
 
-impl Spectrogram {
+impl SpectroRoad {
     pub fn new() -> Self {
         Self {
             history: vec![[0.0; NUM_BANDS]; HISTORY_SIZE],
@@ -39,6 +41,7 @@ impl Spectrogram {
             intensity: 0.0,
             bass: 0.0,
             frame_count: 0,
+            shift_counter: 0,
         }
     }
 
@@ -176,14 +179,17 @@ impl Spectrogram {
     }
 }
 
-impl Visualization for Spectrogram {
+impl Visualization for SpectroRoad {
     fn update(&mut self, analysis: &AudioAnalysis) {
-        // Add to history (scroll left)
-        self.history.remove(0);
-        self.history.push(analysis.bands);
+        // Slower scrolling: only shift every 3 frames
+        self.shift_counter = self.shift_counter.wrapping_add(1);
+        if self.shift_counter % 3 == 0 {
+            self.history.remove(0);
+            self.history.push(analysis.bands);
+        }
 
-        // Smooth intensity tracking for alpha modulation
-        self.intensity = self.intensity * 0.9 + analysis.energy * 0.1;
+        // Track intensity with less smoothing for more reactive scaling
+        self.intensity = self.intensity * 0.7 + analysis.energy * 0.3;
 
         // Track bass for border effect
         self.bass = self.bass * 0.7 + analysis.bass * 0.3;
@@ -197,13 +203,13 @@ impl Visualization for Spectrogram {
             let shake_intensity = analysis.bass * 15.0;
             self.shake_x += rng.random_range(-1.0..1.0) * shake_intensity;
             self.shake_y += rng.random_range(-1.0..1.0) * shake_intensity;
-            self.rotation += rng.random_range(-1.0..1.0) * analysis.bass * 0.03;
+            self.rotation += rng.random_range(-1.0..1.0) * analysis.bass * 0.008;
         }
 
         // Decay shake and rotation
         self.shake_x *= 0.85;
         self.shake_y *= 0.85;
-        self.rotation *= 0.92;
+        self.rotation *= 0.95;
     }
 
     fn draw(&self, draw: &Draw, bounds: Rect) {
@@ -254,8 +260,10 @@ impl Visualization for Spectrogram {
                     // Gutter can reach up to 70% of each dimension
                     let gutter_w = rng.random_range(1.0..(col_width * 0.7).max(2.0));
                     let gutter_h = rng.random_range(1.0..(bin_size * 0.7).max(2.0));
-                    let rect_w = col_width - gutter_w;
-                    let rect_h = bin_size - gutter_h;
+                    // Scale rects dramatically with energy (up to 150% larger at max energy)
+                    let intensity_scale = 1.0 + self.intensity * 1.5;
+                    let rect_w = (col_width - gutter_w) * intensity_scale;
+                    let rect_h = (bin_size - gutter_h) * intensity_scale;
                     // Draw border (larger rect behind)
                     draw.rect()
                         .x_y(x, y)
@@ -292,8 +300,10 @@ impl Visualization for Spectrogram {
                     let mut rng = rand::rng();
                     let gutter_w = rng.random_range(1.0..(bin_size * 0.7).max(2.0));
                     let gutter_h = rng.random_range(1.0..(col_height * 0.7).max(2.0));
-                    let rect_w = bin_size - gutter_w;
-                    let rect_h = col_height - gutter_h;
+                    // Scale rects dramatically with energy (up to 150% larger at max energy)
+                    let intensity_scale = 1.0 + self.intensity * 1.5;
+                    let rect_w = (bin_size - gutter_w) * intensity_scale;
+                    let rect_h = (col_height - gutter_h) * intensity_scale;
                     // Draw border
                     draw.rect()
                         .x_y(x, y)
@@ -330,8 +340,10 @@ impl Visualization for Spectrogram {
                     let mut rng = rand::rng();
                     let gutter_w = rng.random_range(1.0..(col_width * 0.7).max(2.0));
                     let gutter_h = rng.random_range(1.0..(bin_size * 0.7).max(2.0));
-                    let rect_w = col_width - gutter_w;
-                    let rect_h = bin_size - gutter_h;
+                    // Scale rects dramatically with energy (up to 150% larger at max energy)
+                    let intensity_scale = 1.0 + self.intensity * 1.5;
+                    let rect_w = (col_width - gutter_w) * intensity_scale;
+                    let rect_h = (bin_size - gutter_h) * intensity_scale;
                     // Draw border
                     draw.rect()
                         .x_y(x, y)
@@ -368,8 +380,10 @@ impl Visualization for Spectrogram {
                     let mut rng = rand::rng();
                     let gutter_w = rng.random_range(1.0..(bin_size * 0.7).max(2.0));
                     let gutter_h = rng.random_range(1.0..(col_height * 0.7).max(2.0));
-                    let rect_w = bin_size - gutter_w;
-                    let rect_h = col_height - gutter_h;
+                    // Scale rects dramatically with energy (up to 150% larger at max energy)
+                    let intensity_scale = 1.0 + self.intensity * 1.5;
+                    let rect_w = (bin_size - gutter_w) * intensity_scale;
+                    let rect_h = (col_height - gutter_h) * intensity_scale;
                     // Draw border
                     draw.rect()
                         .x_y(x, y)
