@@ -93,6 +93,45 @@ impl CrtNumbers {
         )
     }
 
+    /// Get color based on value: gray -> green -> yellow -> red (0.0 -> 1.0)
+    fn value_color(&self, value: f32, alpha: f32) -> Srgba<u8> {
+        let clamped = value.clamp(0.0, 1.0);
+
+        let (r, g, b) = if clamped < 0.25 {
+            // 0.0 - 0.25: gray to green
+            let t = clamped / 0.25;
+            let gray = 0.4;
+            let r = gray * (1.0 - t);
+            let g = gray * (1.0 - t) + 0.8 * t;
+            let b = gray * (1.0 - t);
+            (r, g, b)
+        } else if clamped < 0.5 {
+            // 0.25 - 0.5: green
+            (0.0, 0.8, 0.0)
+        } else if clamped < 0.75 {
+            // 0.5 - 0.75: green to yellow
+            let t = (clamped - 0.5) / 0.25;
+            let r = 0.9 * t;
+            let g = 0.8;
+            let b = 0.0;
+            (r, g, b)
+        } else {
+            // 0.75 - 1.0: yellow to red
+            let t = (clamped - 0.75) / 0.25;
+            let r = 0.9;
+            let g = 0.8 * (1.0 - t);
+            let b = 0.0;
+            (r, g, b)
+        };
+
+        srgba(
+            (r * 255.0) as u8,
+            (g * 255.0) as u8,
+            (b * 255.0) as u8,
+            alpha.clamp(0.0, 255.0) as u8,
+        )
+    }
+
     /// Format a float value for display
     fn format_value(value: f32) -> String {
         format!("{:.2}", value)
@@ -207,9 +246,14 @@ impl Visualization for CrtNumbers {
             let alpha_scale = BLUR_ALPHA_DECAY.powi(blur_idx as i32);
             let base_alpha = 100.0 * self.glow_intensity * alpha_scale;
 
-            for (label, value, x, y, _) in &text_data {
+            for (label, value, x, y, numeric_value) in &text_data {
                 let text_str = format!("{}: {}", label, value);
-                let color = self.phosphor_color(base_alpha);
+                // Use value-based color if numeric, otherwise use phosphor green
+                let color = if let Some(val) = numeric_value {
+                    self.value_color(*val, base_alpha)
+                } else {
+                    self.phosphor_color(base_alpha)
+                };
 
                 // Draw offset copies for blur effect
                 draw.text(&text_str)
@@ -232,35 +276,63 @@ impl Visualization for CrtNumbers {
         }
 
         // Draw RGB fringing (chromatic aberration)
-        for (label, value, x, y, _) in &text_data {
+        for (label, value, x, y, numeric_value) in &text_data {
             let text_str = format!("{}: {}", label, value);
 
-            // Red channel (shifted left)
-            let color_r = srgba(255, 0, 0, (180.0 * self.glow_intensity) as u8);
+            // Get base color from value, or use phosphor green for non-numeric
+            let base_color = if let Some(val) = numeric_value {
+                self.value_color(*val, 180.0 * self.glow_intensity)
+            } else {
+                self.phosphor_color(180.0 * self.glow_intensity)
+            };
+
+            // Extract RGB and apply channel tinting for chromatic aberration
+            // Red channel (shifted left) - enhance red
+            let color_r = srgba(
+                base_color.red.saturating_add(40),
+                base_color.green / 2,
+                base_color.blue / 2,
+                base_color.alpha,
+            );
             draw.text(&text_str)
                 .x_y(x - RGB_OFFSET, *y)
                 .color(color_r)
                 .font_size(FONT_SIZE);
 
-            // Green channel (no shift - base position)
-            let color_g = srgba(0, 255, 0, (200.0 * self.glow_intensity) as u8);
+            // Green channel (no shift - base position) - enhance green
+            let color_g = srgba(
+                base_color.red / 2,
+                base_color.green,
+                base_color.blue / 2,
+                (200.0 * self.glow_intensity) as u8,
+            );
             draw.text(&text_str)
                 .x_y(*x, *y)
                 .color(color_g)
                 .font_size(FONT_SIZE);
 
-            // Blue channel (shifted right)
-            let color_b = srgba(0, 0, 255, (180.0 * self.glow_intensity) as u8);
+            // Blue channel (shifted right) - enhance blue
+            let color_b = srgba(
+                base_color.red / 2,
+                base_color.green / 2,
+                base_color.blue.saturating_add(40),
+                base_color.alpha,
+            );
             draw.text(&text_str)
                 .x_y(x + RGB_OFFSET, *y)
                 .color(color_b)
                 .font_size(FONT_SIZE);
         }
 
-        // Draw main text (bright phosphor green)
-        for (label, value, x, y, _) in &text_data {
+        // Draw main text with value-based colors
+        for (label, value, x, y, numeric_value) in &text_data {
             let text_str = format!("{}: {}", label, value);
-            let color = self.phosphor_color(255.0 * self.glow_intensity);
+            // Use value-based color if numeric, otherwise use phosphor green
+            let color = if let Some(val) = numeric_value {
+                self.value_color(*val, 255.0 * self.glow_intensity)
+            } else {
+                self.phosphor_color(255.0 * self.glow_intensity)
+            };
             draw.text(&text_str)
                 .x_y(*x, *y)
                 .color(color)
@@ -274,8 +346,8 @@ impl Visualization for CrtNumbers {
                 let line_length = clamped_value * indicator_width;
                 let line_y = y - 15.0; // A few pixels below text to avoid overlap
 
-                // Draw 2.5px greenish line (matching phosphor color)
-                let line_color = self.phosphor_color(220.0 * self.glow_intensity);
+                // Draw 2.5px line with value-based color
+                let line_color = self.value_color(*value, 220.0 * self.glow_intensity);
                 draw.line()
                     .start(pt2(*x - indicator_width / 2.0, line_y))
                     .end(pt2(*x - indicator_width / 2.0 + line_length, line_y))
