@@ -1,3 +1,8 @@
+//! Radial frequency burst visualization.
+//!
+//! Renders frequency bands as colorful rays emanating from the center, creating
+//! a sunburst effect with psychedelic rotation.
+
 use super::Visualization;
 use nannou::prelude::*;
 

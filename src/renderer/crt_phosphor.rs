@@ -1,3 +1,8 @@
+//! CRT monitor phosphor decay simulation.
+//!
+//! Emulates cathode ray tube display characteristics with phosphor persistence
+//! and scan line flickering.
+
 use super::Visualization;
 use nannou::prelude::*;
 

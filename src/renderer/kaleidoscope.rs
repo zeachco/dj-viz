@@ -1,3 +1,8 @@
+//! Symmetric kaleidoscope pattern visualization.
+//!
+//! Creates radially symmetric patterns with frequency-driven geometry and
+//! color cycling.
+
 use super::Visualization;
 use nannou::prelude::*;
 use rand::Rng;

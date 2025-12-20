@@ -1,3 +1,8 @@
+//! Gravitational lens black hole visualization.
+//!
+//! Creates a black hole effect with spacetime distortion and light bending
+//! that responds to bass frequencies.
+
 use super::Visualization;
 use nannou::prelude::*;
 use rand::Rng;

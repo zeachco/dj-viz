@@ -1,3 +1,8 @@
+//! Retro VHS tape distortion effect.
+//!
+//! Simulates analog video artifacts including scan lines, color bleeding,
+//! and tracking errors.
+
 use super::Visualization;
 use nannou::prelude::*;
 use rand::Rng;

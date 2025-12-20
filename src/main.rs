@@ -89,7 +89,7 @@ fn update(app: &App, model: &mut Model, _update: Update) {
     let analysis = model.analyzer.analyze(&samples);
 
     // Debug: print energy every second
-    if app.elapsed_frames() % 60 == 0 {
+    if app.elapsed_frames().is_multiple_of(60) {
         println!("Energy: {:.2} | Bass: {:.2} | Mids: {:.2} | Treble: {:.2}",
             analysis.energy, analysis.bass, analysis.mids, analysis.treble);
     }
@@ -196,7 +196,7 @@ fn draw_search_overlay(draw: &Draw, bounds: Rect, capture: &OutputCapture) {
     let query_text = format!("Search: {}_", capture.query);
     draw.text(&query_text)
         .xy(pt2(text_box_x, query_y))
-        .wh(pt2(text_box_width, line_height).into())
+        .wh(pt2(text_box_width, line_height))
         .left_justify()
         .no_line_wrap()
         .color(rgb(1.0, 1.0, 1.0))
@@ -226,7 +226,7 @@ fn draw_search_overlay(draw: &Draw, bounds: Rect, capture: &OutputCapture) {
 
         draw.text(&text)
             .xy(pt2(text_box_x, item_y))
-            .wh(pt2(text_box_width, line_height).into())
+            .wh(pt2(text_box_width, line_height))
             .left_justify()
             .no_line_wrap()
             .color(color)
@@ -239,7 +239,7 @@ fn draw_search_overlay(draw: &Draw, bounds: Rect, capture: &OutputCapture) {
         let more_text = format!("  ... and {} more", capture.filtered.len() - max_visible);
         draw.text(&more_text)
             .xy(pt2(text_box_x, more_y))
-            .wh(pt2(text_box_width, line_height).into())
+            .wh(pt2(text_box_width, line_height))
             .left_justify()
             .no_line_wrap()
             .color(rgba(1.0, 1.0, 1.0, 0.5))
@@ -310,7 +310,7 @@ fn key_pressed(app: &App, model: &mut Model, key: Key) {
     let shift_offset = if app.keys.mods.shift() { 10 } else { 0 };
 
     let index = match key {
-        Key::Key0 => Some(0 + shift_offset),
+        Key::Key0 => Some(shift_offset),
         Key::Key1 => Some(1 + shift_offset),
         Key::Key2 => Some(2 + shift_offset),
         Key::Key3 => Some(3 + shift_offset),

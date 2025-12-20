@@ -1,3 +1,8 @@
+//! Electric arc visualization with lightning effects.
+//!
+//! Simulates Tesla coil electrical arcs that dance and crackle in response to
+//! audio frequencies.
+
 use super::Visualization;
 use nannou::prelude::*;
 use rand::Rng;

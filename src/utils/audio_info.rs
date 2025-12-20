@@ -1,3 +1,8 @@
+//! Audio system diagnostics for Unix platforms.
+//!
+//! Provides detailed information about PulseAudio/PipeWire configuration
+//! and available audio devices.
+
 use std::process::Command;
 
 /// Logs detailed audio system information on Unix systems

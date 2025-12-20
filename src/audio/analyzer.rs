@@ -1,3 +1,8 @@
+//! Audio analysis and FFT processing.
+//!
+//! Performs real-time FFT analysis on audio samples to extract frequency band energies,
+//! detect beats/transitions, and compute aggregate metrics (bass, mids, treble).
+
 use num_complex::Complex;
 use rustfft::{Fft, FftPlanner};
 use std::sync::Arc;
@@ -17,8 +22,6 @@ const BAND_EDGES: [f32; NUM_BANDS + 1] = [20.0, 60.0, 250.0, 500.0, 2000.0, 4000
 pub struct AudioAnalysis {
     /// Energy in each frequency band (0-1, smoothed)
     pub bands: [f32; NUM_BANDS],
-    /// Raw band values before smoothing (for reactive effects)
-    pub bands_raw: [f32; NUM_BANDS],
     /// Overall energy/volume (0-1)
     pub energy: f32,
     /// Whether a musical transition was detected
@@ -29,21 +32,17 @@ pub struct AudioAnalysis {
     pub mids: f32,
     /// Treble energy (bands 5-7 combined)
     pub treble: f32,
-    /// Peak detected this frame (any band spiked)
-    pub peak: bool,
 }
 
 impl Default for AudioAnalysis {
     fn default() -> Self {
         Self {
             bands: [0.0; NUM_BANDS],
-            bands_raw: [0.0; NUM_BANDS],
             energy: 0.0,
             transition_detected: false,
             bass: 0.0,
             mids: 0.0,
             treble: 0.0,
-            peak: false,
         }
     }
 }
@@ -75,9 +74,6 @@ pub struct AudioAnalyzer {
     // Frame skipping for performance
     frame_count: u32,
     last_analysis: AudioAnalysis,
-
-    // Sample rate for bin calculations
-    sample_rate: f32,
 }
 
 impl AudioAnalyzer {
@@ -123,7 +119,6 @@ impl AudioAnalyzer {
             prev_bands: [0.0; NUM_BANDS],
             frame_count: 0,
             last_analysis: AudioAnalysis::default(),
-            sample_rate,
         }
     }
 
@@ -184,9 +179,6 @@ impl AudioAnalyzer {
             self.smoothed_energy = self.smoothed_energy * 0.9 + energy_raw * 0.1;
         }
 
-        // Detect peaks (any band jumped significantly)
-        let peak = bands_raw.iter().zip(self.prev_bands.iter())
-            .any(|(curr, prev)| *curr > *prev + 0.15 && *curr > 0.3);
         self.prev_bands = bands_raw;
 
         // Transition detection
@@ -199,13 +191,11 @@ impl AudioAnalyzer {
 
         self.last_analysis = AudioAnalysis {
             bands: self.smoothed_bands,
-            bands_raw,
             energy: self.smoothed_energy,
             transition_detected,
             bass,
             mids,
             treble,
-            peak,
         };
 
         self.last_analysis.clone()

@@ -1,3 +1,8 @@
+//! Audio device search and selection UI.
+//!
+//! Manages the interactive fuzzy-search overlay for selecting audio input/output
+//! devices at runtime.
+
 use cpal::traits::{DeviceTrait, HostTrait};
 
 /// Represents an audio device entry for search/selection

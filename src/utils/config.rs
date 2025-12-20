@@ -1,3 +1,7 @@
+//! Configuration file management.
+//!
+//! Handles loading and saving user preferences to `~/.dj-viz.toml`.
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -49,7 +53,8 @@ impl Config {
     }
 
     pub fn device_timeout_secs(&self) -> u64 {
-        self.device_timeout_secs.unwrap_or(DEFAULT_DEVICE_TIMEOUT_SECS)
+        self.device_timeout_secs
+            .unwrap_or(DEFAULT_DEVICE_TIMEOUT_SECS)
     }
 
     pub fn save(&self) {
@@ -64,11 +69,6 @@ impl Config {
     pub fn set_device(&mut self, name: &str, is_input: bool) {
         self.last_device = Some(name.to_string());
         self.last_device_is_input = Some(is_input);
-        self.save();
-    }
-
-    pub fn set_pw_link_target(&mut self, target: &str) {
-        self.pw_link_target = Some(target.to_string());
         self.save();
     }
 }

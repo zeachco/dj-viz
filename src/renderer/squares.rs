@@ -1,3 +1,8 @@
+//! Geometric grid visualization with beat-reactive squares.
+//!
+//! Displays a grid of rotating, pulsing squares that respond to frequency bands
+//! and spawn particle bursts on beat detection.
+
 use super::Visualization;
 use nannou::prelude::*;
 use rand::Rng;
@@ -122,7 +127,7 @@ impl Visualization for Squares {
         let peak_now = analysis.treble > 0.5;
         if peak_now && !self.peak_detected {
             // Shift hue by a golden ratio fraction for pleasing color jumps
-            self.hue_offset = (self.hue_offset + 0.618033988749895) % 1.0;
+            self.hue_offset = (self.hue_offset + 0.618_034) % 1.0;
         }
         self.peak_detected = peak_now;
 

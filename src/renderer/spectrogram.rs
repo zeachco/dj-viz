@@ -1,3 +1,8 @@
+//! Scrolling frequency-time heatmap visualization.
+//!
+//! Displays audio frequency content over time as a colorful 2D spectrogram with
+//! beat-reactive shake and rotation effects.
+
 use super::Visualization;
 use nannou::prelude::*;
 use rand::Rng;

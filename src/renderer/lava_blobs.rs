@@ -1,3 +1,8 @@
+//! Organic blob visualization with metaball effects.
+//!
+//! Renders fluid, pulsating organic shapes that merge and split in response
+//! to bass frequencies.
+
 use super::Visualization;
 use nannou::prelude::*;
 use rand::Rng;

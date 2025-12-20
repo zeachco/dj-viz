@@ -1,3 +1,8 @@
+//! Audio device capture and stream management.
+//!
+//! Handles audio input from system devices using cpal, managing device enumeration,
+//! stream creation, and a ring buffer for sample storage.
+
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, Stream, StreamConfig};
 use std::sync::{Arc, Mutex};
@@ -234,23 +239,6 @@ impl SourcePipe {
         self.devices.len()
     }
 
-    /// Select a device by name (partial match, case-insensitive)
-    /// Matches against "name (input)" or "name (output)" format
-    /// Returns Some((device_name, success)) if found and switched
-    pub fn select_device_by_name(&mut self, name: &str) -> Option<(String, bool)> {
-        let name_lower = name.to_lowercase();
-        let index = self.devices.iter().position(|d| {
-            let device_type = if d.is_input { "input" } else { "output" };
-            let full_name = format!("{} ({})", d.name, device_type).to_lowercase();
-            full_name.contains(&name_lower) || d.name.to_lowercase().contains(&name_lower)
-        })?;
-        self.select_device(index)
-    }
-
-    /// Refresh the device list and return new count
-    pub fn refresh_devices(&mut self) {
-        self.devices = Self::collect_devices();
-    }
 
     /// Get current audio samples with auto-gain normalization
     pub fn stream(&mut self) -> Vec<f32> {

@@ -1,3 +1,8 @@
+//! Visualization orchestration and cycling.
+//!
+//! Manages the visualization pipeline, including automatic cycling between effects
+//! on detected musical transitions and overlay blending.
+
 pub mod black_hole;
 pub mod crt_phosphor;
 pub mod feedback;
@@ -84,26 +89,6 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(visualization: Box<dyn Visualization>) -> Self {
-        Self {
-            visualizations: vec![visualization],
-            current_idx: 0,
-            overlay_indices: Vec::new(),
-            cooldown: 0,
-            notification_text: None,
-            notification_frames: 0,
-            locked: false,
-        }
-    }
-
-    pub fn with_spectrogram() -> Self {
-        Self::new(Box::new(Spectrogram::new()))
-    }
-
-    pub fn with_solar_beat() -> Self {
-        Self::new(Box::new(SolarBeat::new()))
-    }
-
     /// Creates a renderer that cycles between visualizations
     /// when audio transitions are detected, starting with a random one
     pub fn with_cycling() -> Self {
@@ -287,21 +272,6 @@ impl Renderer {
     /// Returns the number of active overlays
     pub fn overlay_count(&self) -> usize {
         self.overlay_indices.len()
-    }
-
-    /// Legacy draw method for backwards compatibility (draws primary only)
-    pub fn draw(&self, draw: &Draw, bounds: Rect) {
-        // Note: Don't draw background - feedback shader clears to black and preserves trails
-        self.draw_primary(draw, bounds);
-
-        // Draw notification text at middle top
-        if let Some(ref text) = self.notification_text {
-            let alpha = (self.notification_frames as f32 / NOTIFICATION_FRAMES as f32).min(1.0);
-            draw.text(text)
-                .x_y(0.0, bounds.top() - 30.0)
-                .color(rgba(1.0, 1.0, 1.0, alpha))
-                .font_size(24);
-        }
     }
 
     /// Draw notification overlay (should be drawn after all visualizations)
