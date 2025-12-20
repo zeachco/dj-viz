@@ -6,7 +6,7 @@ Real-time audio visualizer built with Rust and nannou.
 
 ## Download
 
-Pre-built binaries are available from [GitHub Actions](../../actions/workflows/build.yml) - click on the latest successful run and download artifacts for your platform:
+Pre-built binaries are available for download in [Releases](../../releases) - click on the latest successful run and download artifacts for your platform:
 
 - **dj-viz-linux-x86_64** - Linux (x86_64)
 - **dj-viz-linux-aarch64** - Raspberry Pi 4+ (64-bit)
@@ -52,3 +52,10 @@ The search shows both output and input PipeWire ports, with outputs listed first
 ## Configuration
 
 Audio device and PipeWire stream selections are saved to `~/.dj-viz.toml`.
+
+## Screenshots
+
+| | | |
+|:---:|:---:|:---:|
+| <img src="assets/preview_1.png" width="250"> | <img src="assets/preview_2.png" width="250"> | <img src="assets/preview_3.png" width="250"> |
+| <img src="assets/preview_4.png" width="250"> | <img src="assets/preview_5.png" width="250"> | <img src="assets/preview_6.png" width="250"> |
