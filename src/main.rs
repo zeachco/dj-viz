@@ -28,6 +28,8 @@ struct Model {
     renderer: Renderer,
     output_capture: OutputCapture,
     feedback: RefCell<FeedbackRenderer>,
+    #[allow(dead_code)]
+    screensaver_inhibitor: Option<utils::ScreensaverInhibitor>,
 }
 
 fn model(app: &App) -> Model {
@@ -63,12 +65,20 @@ fn model(app: &App) -> Model {
         Frame::TEXTURE_FORMAT,
     );
 
+    // Inhibit screensaver in release mode
+    let screensaver_inhibitor = if !cfg!(debug_assertions) {
+        utils::ScreensaverInhibitor::new()
+    } else {
+        None
+    };
+
     Model {
         source: SourcePipe::new(),
         analyzer: AudioAnalyzer::new(),
         renderer: Renderer::with_cycling(),
         output_capture: OutputCapture::new(),
         feedback: RefCell::new(feedback),
+        screensaver_inhibitor,
     }
 }
 

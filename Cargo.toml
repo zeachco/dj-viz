@@ -14,3 +14,6 @@ dirs = "5.0"
 rand = "0.9"
 bytemuck = { version = "1.14", features = ["derive"] }
 wgpu-types = "0.17"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = ["Win32_System_Power"] }
