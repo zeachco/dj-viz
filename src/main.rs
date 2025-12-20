@@ -53,6 +53,11 @@ fn model(app: &App) -> Model {
 
     // Get window for wgpu resources
     let window = app.window(window_id).unwrap();
+
+    // Hide cursor in fullscreen mode
+    if resolution.fullscreen {
+        window.set_cursor_visible(false);
+    }
     let device = window.device();
     let queue = window.queue();
     let size = window.inner_size_pixels();
