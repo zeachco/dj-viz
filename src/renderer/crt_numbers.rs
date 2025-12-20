@@ -1,0 +1,306 @@
+//! CRT numbers display visualization.
+//!
+//! Displays all audio analysis inputs in a retro CRT terminal style with
+//! RGB chromatic aberration, scanlines, phosphor glow, and vignette effects.
+
+use super::Visualization;
+use nannou::prelude::*;
+
+use crate::audio::AudioAnalysis;
+
+/// Base font size for numbers
+const FONT_SIZE: u32 = 24;
+/// Pixel offset for RGB fringing
+const RGB_OFFSET: f32 = 2.0;
+/// Pixels between scanlines
+const SCANLINE_SPACING: f32 = 3.0;
+/// Darkness of scanlines (0-255)
+const SCANLINE_ALPHA: u8 = 15;
+/// Number of blur passes
+const BLUR_LAYERS: usize = 3;
+/// How much each blur layer fades
+const BLUR_ALPHA_DECAY: f32 = 0.5;
+/// Green CRT phosphor (classic terminal)
+const PHOSPHOR_HUE: f32 = 120.0;
+/// Update numbers every N frames (reduces flicker)
+const UPDATE_INTERVAL: u32 = 3;
+
+pub struct CrtNumbers {
+    /// Frame counter
+    frame_count: u32,
+    /// Cached display values (updated every UPDATE_INTERVAL frames)
+    display_bands: [f32; 8],
+    display_bass: f32,
+    display_mids: f32,
+    display_treble: f32,
+    display_energy: f32,
+    display_transition: bool,
+    /// Scanline offset for subtle animation
+    scanline_offset: f32,
+    /// Phosphor glow intensity
+    glow_intensity: f32,
+}
+
+impl CrtNumbers {
+    /// Create a new CrtNumbers visualization
+    pub fn new() -> Self {
+        Self {
+            frame_count: 0,
+            display_bands: [0.0; 8],
+            display_bass: 0.0,
+            display_mids: 0.0,
+            display_treble: 0.0,
+            display_energy: 0.0,
+            display_transition: false,
+            scanline_offset: 0.0,
+            glow_intensity: 0.5,
+        }
+    }
+
+    /// Convert HSV to RGB color space
+    fn hsv_to_rgb(hue: f32, saturation: f32, value: f32) -> (f32, f32, f32) {
+        let hue = hue % 360.0;
+        let c = value * saturation;
+        let x = c * (1.0 - ((hue / 60.0) % 2.0 - 1.0).abs());
+        let m = value - c;
+
+        let (r1, g1, b1) = if hue < 60.0 {
+            (c, x, 0.0)
+        } else if hue < 120.0 {
+            (x, c, 0.0)
+        } else if hue < 180.0 {
+            (0.0, c, x)
+        } else if hue < 240.0 {
+            (0.0, x, c)
+        } else if hue < 300.0 {
+            (x, 0.0, c)
+        } else {
+            (c, 0.0, x)
+        };
+
+        (r1 + m, g1 + m, b1 + m)
+    }
+
+    /// Get phosphor green color with specified alpha
+    fn phosphor_color(&self, alpha: f32) -> Srgba<u8> {
+        let (r, g, b) = Self::hsv_to_rgb(PHOSPHOR_HUE, 0.9, 0.9);
+
+        srgba(
+            (r * 255.0) as u8,
+            (g * 255.0) as u8,
+            (b * 255.0) as u8,
+            alpha.clamp(0.0, 255.0) as u8,
+        )
+    }
+
+    /// Format a float value for display
+    fn format_value(value: f32) -> String {
+        format!("{:.2}", value)
+    }
+}
+
+impl Visualization for CrtNumbers {
+    fn update(&mut self, analysis: &AudioAnalysis) {
+        self.frame_count += 1;
+
+        // Animate scanlines
+        self.scanline_offset += 0.5;
+        if self.scanline_offset >= SCANLINE_SPACING {
+            self.scanline_offset -= SCANLINE_SPACING;
+        }
+
+        // Update display values every UPDATE_INTERVAL frames
+        if self.frame_count % UPDATE_INTERVAL == 0 {
+            self.display_bands = analysis.bands;
+            self.display_bass = analysis.bass;
+            self.display_mids = analysis.mids;
+            self.display_treble = analysis.treble;
+            self.display_energy = analysis.energy;
+            self.display_transition = analysis.transition_detected;
+        }
+
+        // Smooth glow intensity
+        let target_glow = 0.5 + analysis.energy * 0.5;
+        self.glow_intensity = self.glow_intensity * 0.9 + target_glow * 0.1;
+    }
+
+    fn draw(&self, draw: &Draw, bounds: Rect) {
+        let center = bounds.xy();
+        let bounds_w = bounds.w();
+        let bounds_h = bounds.h();
+
+        // Layout configuration
+        let column_spacing = bounds_w / 4.0;
+        let row_spacing = 30.0;
+        let start_y = bounds.top() - 50.0;
+
+        // Prepare text data: (label, value, x, y)
+        let mut text_data: Vec<(String, String, f32, f32)> = Vec::new();
+
+        // Column 1: Frequency bands
+        let col1_x = center.x - column_spacing;
+        for i in 0..8 {
+            text_data.push((
+                format!("Band {}", i),
+                Self::format_value(self.display_bands[i]),
+                col1_x,
+                start_y - row_spacing * i as f32,
+            ));
+        }
+
+        // Column 2: Bass/Mids/Treble
+        let col2_x = center.x;
+        text_data.push((
+            "Bass".to_string(),
+            Self::format_value(self.display_bass),
+            col2_x,
+            start_y,
+        ));
+        text_data.push((
+            "Mids".to_string(),
+            Self::format_value(self.display_mids),
+            col2_x,
+            start_y - row_spacing,
+        ));
+        text_data.push((
+            "Treble".to_string(),
+            Self::format_value(self.display_treble),
+            col2_x,
+            start_y - row_spacing * 2.0,
+        ));
+
+        // Column 3: Energy/Transition
+        let col3_x = center.x + column_spacing;
+        text_data.push((
+            "Energy".to_string(),
+            Self::format_value(self.display_energy),
+            col3_x,
+            start_y,
+        ));
+        text_data.push((
+            "Transition".to_string(),
+            if self.display_transition {
+                "TRUE".to_string()
+            } else {
+                "FALSE".to_string()
+            },
+            col3_x,
+            start_y - row_spacing,
+        ));
+
+        // Draw blur layers (behind text)
+        for blur_idx in (0..BLUR_LAYERS).rev() {
+            let offset = (blur_idx + 1) as f32 * 1.5;
+            let alpha_scale = BLUR_ALPHA_DECAY.powi(blur_idx as i32);
+            let base_alpha = 100.0 * self.glow_intensity * alpha_scale;
+
+            for (label, value, x, y) in &text_data {
+                let text_str = format!("{}: {}", label, value);
+                let color = self.phosphor_color(base_alpha);
+
+                // Draw offset copies for blur effect
+                draw.text(&text_str)
+                    .x_y(x + offset, *y)
+                    .color(color)
+                    .font_size(FONT_SIZE);
+                draw.text(&text_str)
+                    .x_y(x - offset, *y)
+                    .color(color)
+                    .font_size(FONT_SIZE);
+                draw.text(&text_str)
+                    .x_y(*x, y + offset)
+                    .color(color)
+                    .font_size(FONT_SIZE);
+                draw.text(&text_str)
+                    .x_y(*x, y - offset)
+                    .color(color)
+                    .font_size(FONT_SIZE);
+            }
+        }
+
+        // Draw RGB fringing (chromatic aberration)
+        for (label, value, x, y) in &text_data {
+            let text_str = format!("{}: {}", label, value);
+
+            // Red channel (shifted left)
+            let color_r = srgba(255, 0, 0, (180.0 * self.glow_intensity) as u8);
+            draw.text(&text_str)
+                .x_y(x - RGB_OFFSET, *y)
+                .color(color_r)
+                .font_size(FONT_SIZE);
+
+            // Green channel (no shift - base position)
+            let color_g = srgba(0, 255, 0, (200.0 * self.glow_intensity) as u8);
+            draw.text(&text_str)
+                .x_y(*x, *y)
+                .color(color_g)
+                .font_size(FONT_SIZE);
+
+            // Blue channel (shifted right)
+            let color_b = srgba(0, 0, 255, (180.0 * self.glow_intensity) as u8);
+            draw.text(&text_str)
+                .x_y(x + RGB_OFFSET, *y)
+                .color(color_b)
+                .font_size(FONT_SIZE);
+        }
+
+        // Draw main text (bright phosphor green)
+        for (label, value, x, y) in &text_data {
+            let text_str = format!("{}: {}", label, value);
+            let color = self.phosphor_color(255.0 * self.glow_intensity);
+            draw.text(&text_str)
+                .x_y(*x, *y)
+                .color(color)
+                .font_size(FONT_SIZE);
+        }
+
+        // Draw scanlines (horizontal lines across entire screen)
+        let num_scanlines = (bounds_h / SCANLINE_SPACING) as usize + 1;
+        for i in 0..num_scanlines {
+            let y = bounds.bottom() + i as f32 * SCANLINE_SPACING + self.scanline_offset;
+            if y > bounds.top() {
+                break;
+            }
+
+            draw.line()
+                .start(pt2(bounds.left(), y))
+                .end(pt2(bounds.right(), y))
+                .weight(1.0)
+                .color(srgba(0, 0, 0, SCANLINE_ALPHA));
+        }
+
+        // Draw CRT vignette (darker edges)
+        for i in 0..15 {
+            let t = i as f32 / 15.0;
+            let inset = t * 60.0;
+            let alpha = (t * 0.15 * 255.0) as u8;
+
+            draw.rect()
+                .x_y(center.x, center.y)
+                .w_h(bounds_w - inset * 2.0, bounds_h - inset * 2.0)
+                .no_fill()
+                .stroke_weight(2.0)
+                .stroke(srgba(0, 0, 0, alpha));
+        }
+
+        // Draw corner glow (CRT curvature effect)
+        let corner_size = 100.0;
+        let corners = [(1.0, 1.0), (1.0, -1.0), (-1.0, 1.0), (-1.0, -1.0)];
+
+        for (corner_x, corner_y) in corners {
+            let cx = center.x + corner_x * (bounds_w / 2.0 - corner_size / 2.0);
+            let cy = center.y + corner_y * (bounds_h / 2.0 - corner_size / 2.0);
+
+            for i in 0..8 {
+                let t = i as f32 / 8.0;
+                let size = corner_size * (1.0 - t * 0.6);
+                let alpha = ((1.0 - t) * 0.4 * 255.0) as u8;
+
+                draw.ellipse()
+                    .x_y(cx, cy)
+                    .w_h(size, size)
+                    .color(srgba(0, 0, 0, alpha));
+            }
+        }
+    }
+}

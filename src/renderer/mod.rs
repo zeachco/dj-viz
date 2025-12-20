@@ -4,8 +4,10 @@
 //! on detected musical transitions and overlay blending.
 
 pub mod black_hole;
+pub mod crt_numbers;
 pub mod crt_phosphor;
 pub mod feedback;
+pub mod gravity_flames;
 pub mod kaleidoscope;
 pub mod lava_blobs;
 pub mod solar_beat;
@@ -20,8 +22,10 @@ use rand::Rng;
 use crate::audio::AudioAnalysis;
 
 pub use black_hole::BlackHole;
+pub use crt_numbers::CrtNumbers;
 pub use crt_phosphor::CrtPhosphor;
 pub use feedback::FeedbackRenderer;
+pub use gravity_flames::GravityFlames;
 pub use kaleidoscope::Kaleidoscope;
 pub use lava_blobs::LavaBlobs;
 pub use solar_beat::SolarBeat;
@@ -102,6 +106,8 @@ impl Renderer {
             Box::new(VhsDistortion::new()),
             Box::new(CrtPhosphor::new()),
             Box::new(BlackHole::new()),
+            Box::new(GravityFlames::new()),
+            Box::new(CrtNumbers::new()),
         ];
 
         let mut rng = rand::rng();
@@ -220,6 +226,8 @@ impl Renderer {
             6 => "VhsDistortion",
             7 => "CrtPhosphor",
             8 => "BlackHole",
+            9 => "GravityFlames",
+            10 => "CrtNumbers",
             _ => "Unknown",
         }
     }
