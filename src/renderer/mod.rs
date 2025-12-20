@@ -79,6 +79,8 @@ pub struct Renderer {
     cooldown: u32,
     notification_text: Option<String>,
     notification_frames: u32,
+    /// When true, auto-cycling is disabled (user manually selected a visualization)
+    locked: bool,
 }
 
 impl Renderer {
@@ -90,6 +92,7 @@ impl Renderer {
             cooldown: 0,
             notification_text: None,
             notification_frames: 0,
+            locked: false,
         }
     }
 
@@ -118,7 +121,8 @@ impl Renderer {
 
         let mut rng = rand::rng();
         let current_idx = rng.random_range(0..visualizations.len());
-        let overlay_indices = Self::select_overlays_for(current_idx, visualizations.len(), &mut rng);
+        let overlay_indices =
+            Self::select_overlays_for(current_idx, visualizations.len(), &mut rng);
 
         Self {
             visualizations,
@@ -127,11 +131,16 @@ impl Renderer {
             cooldown: 0,
             notification_text: None,
             notification_frames: 0,
+            locked: false,
         }
     }
 
     /// Selects 0-3 random overlay visualization indices (excluding the primary)
-    fn select_overlays_for(primary_idx: usize, count: usize, rng: &mut impl rand::Rng) -> Vec<usize> {
+    fn select_overlays_for(
+        primary_idx: usize,
+        count: usize,
+        rng: &mut impl rand::Rng,
+    ) -> Vec<usize> {
         if count <= 1 {
             return Vec::new();
         }
@@ -153,11 +162,8 @@ impl Renderer {
     /// Selects new overlay visualizations for the current primary
     fn select_overlays(&mut self) {
         let mut rng = rand::rng();
-        self.overlay_indices = Self::select_overlays_for(
-            self.current_idx,
-            self.visualizations.len(),
-            &mut rng,
-        );
+        self.overlay_indices =
+            Self::select_overlays_for(self.current_idx, self.visualizations.len(), &mut rng);
     }
 
     /// Shows a notification message for 3 seconds
@@ -166,17 +172,56 @@ impl Renderer {
         self.notification_frames = NOTIFICATION_FRAMES;
     }
 
-    /// Manually cycle to the next visualization
+    /// Manually cycle to the next visualization (unlocks auto-cycling)
     pub fn cycle_next(&mut self) {
         if self.visualizations.len() > 1 {
             self.current_idx = (self.current_idx + 1) % self.visualizations.len();
             self.select_overlays();
             self.cooldown = COOLDOWN_FRAMES;
+            self.locked = false; // Space unlocks and resumes auto-cycling
             println!(
                 "Switched to visualization {} with {} overlays",
                 self.current_idx,
                 self.overlay_indices.len()
             );
+        }
+    }
+
+    /// Set a specific visualization by index and lock (disable auto-cycling)
+    /// Returns the visualization name if successful
+    pub fn set_visualization(&mut self, idx: usize) -> Option<&'static str> {
+        if idx >= self.visualizations.len() {
+            self.locked = true;
+            return None;
+        }
+        self.current_idx = idx;
+        self.overlay_indices.clear(); // No overlays when locked to single viz
+        self.cooldown = COOLDOWN_FRAMES;
+        self.locked = true;
+
+        let name = Self::visualization_name(idx);
+        println!("Locked to visualization {}: {}", idx, name);
+        Some(name)
+    }
+
+    /// Returns the number of available visualizations
+    pub fn visualization_count(&self) -> usize {
+        self.visualizations.len()
+    }
+
+    /// Get visualization name by index
+    fn visualization_name(idx: usize) -> &'static str {
+        match idx {
+            0 => "SolarBeat",
+            1 => "Spectrogram",
+            2 => "Squares",
+            3 => "TeslaCoil",
+            4 => "Kaleidoscope",
+            5 => "LavaBlobs",
+            6 => "VhsDistortion",
+            7 => "CrtPhosphor",
+            8 => "BlackHole",
+            _ => "Unknown",
         }
     }
 
@@ -192,8 +237,12 @@ impl Renderer {
             }
         }
 
-        // Check for visualization switch if multiple visualizations and cooldown expired
-        if self.visualizations.len() > 1 && self.cooldown == 0 && analysis.transition_detected {
+        // Check for visualization switch if multiple visualizations, cooldown expired, and not locked
+        if self.visualizations.len() > 1
+            && self.cooldown == 0
+            && !self.locked
+            && analysis.transition_detected
+        {
             // Switch to a random different visualization
             let mut rng = rand::rng();
             let new_idx = loop {

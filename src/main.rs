@@ -300,18 +300,13 @@ fn key_pressed(app: &App, model: &mut Model, key: Key) {
         return;
     }
 
-    // Space cycles visualizations
+    // Space cycles visualizations and unlocks auto-cycling
     if key == Key::Space {
         model.renderer.cycle_next();
         return;
     }
 
-    // Number keys for device selection
-    let num_devices = model.source.device_count();
-    if num_devices == 0 {
-        return;
-    }
-
+    // Number keys for visualization selection (locks to that visualization)
     let shift_offset = if app.keys.mods.shift() { 10 } else { 0 };
 
     let index = match key {
@@ -329,13 +324,8 @@ fn key_pressed(app: &App, model: &mut Model, key: Key) {
     };
 
     if let Some(idx) = index {
-        if let Some((name, success)) = model.source.select_device(idx) {
-            let msg = if success {
-                format!("[{}] {}", idx, name)
-            } else {
-                format!("[{}] {} - FAILED", idx, name)
-            };
-            model.renderer.show_notification(msg);
+        if let Some(name) = model.renderer.set_visualization(idx) {
+            model.renderer.show_notification(format!("[{}] {}", idx, name));
         }
     }
 }
