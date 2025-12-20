@@ -18,6 +18,19 @@ const FFT_SIZE: usize = 2048;
 /// Sub-bass, Bass, Low-mid, Mid, Upper-mid, Presence, Brilliance, Air
 const BAND_EDGES: [f32; NUM_BANDS + 1] = [20.0, 60.0, 250.0, 500.0, 2000.0, 4000.0, 6000.0, 12000.0, 20000.0];
 
+/// Per-band dB calibration: (min_db, max_db) for each band
+/// Lower frequencies naturally have more energy and need wider dynamic range
+const BAND_DB_RANGES: [(f32, f32); NUM_BANDS] = [
+    (-100.0, 20.0),  // Sub-bass (20-60 Hz) - needs most headroom
+    (-95.0, 25.0),   // Bass (60-250 Hz)
+    (-85.0, 35.0),   // Low-mid (250-500 Hz)
+    (-80.0, 40.0),   // Mid (500-2000 Hz)
+    (-75.0, 45.0),   // Upper-mid (2000-4000 Hz)
+    (-70.0, 50.0),   // Presence (4000-6000 Hz)
+    (-65.0, 55.0),   // Brilliance (6000-12000 Hz)
+    (-60.0, 60.0),   // Air (12000-20000 Hz)
+];
+
 /// Pre-computed analysis results - no allocations needed by visualizations
 #[derive(Clone)]
 pub struct AudioAnalysis {
@@ -72,6 +85,10 @@ pub struct AudioAnalyzer {
     // Peak detection
     prev_bands: [f32; NUM_BANDS],
 
+    // Adaptive normalization - track recent max energy per band
+    band_max_history: [[f32; 60]; NUM_BANDS], // 60 frames (~1 second at 60fps)
+    band_max_idx: usize,
+
     // Frame skipping for performance
     frame_count: u32,
     last_analysis: AudioAnalysis,
@@ -118,6 +135,8 @@ impl AudioAnalyzer {
             was_high_energy: false,
             was_high_freq: false,
             prev_bands: [0.0; NUM_BANDS],
+            band_max_history: [[0.0; 60]; NUM_BANDS],
+            band_max_idx: 0,
             frame_count: 0,
             last_analysis: AudioAnalysis::default(),
         }
@@ -127,6 +146,9 @@ impl AudioAnalyzer {
     /// Returns cached result if called multiple times per frame.
     pub fn analyze(&mut self, samples: &[f32]) -> AudioAnalysis {
         self.frame_count = self.frame_count.wrapping_add(1);
+
+        // Update adaptive normalization index
+        self.band_max_idx = (self.band_max_idx + 1) % 60;
 
         // Take FFT_SIZE samples from the input (or pad with zeros)
         let sample_count = samples.len().min(FFT_SIZE);
@@ -155,10 +177,28 @@ impl AudioAnalyzer {
 
                 // Normalize and convert to dB-ish scale
                 let avg_energy = energy / (high - low) as f32;
+
+                // Store raw energy for adaptive normalization
+                self.band_max_history[i][self.band_max_idx] = avg_energy;
+                let recent_max = self.band_max_history[i]
+                    .iter()
+                    .cloned()
+                    .fold(0.0f32, f32::max)
+                    .max(1e-10); // Prevent division by zero
+
                 let db = 10.0 * (avg_energy + 1e-10).log10();
-                // Map -80dB to +40dB -> 0 to 1 (120dB dynamic range)
-                // Lower frequencies naturally have more energy, so we need wide range
-                bands_raw[i] = ((db + 80.0) / 120.0).clamp(0.0, 1.0);
+
+                // Use per-band calibration for better dynamic range
+                let (min_db, max_db) = BAND_DB_RANGES[i];
+                let db_range = max_db - min_db;
+                let calibrated = ((db - min_db) / db_range).clamp(0.0, 1.0);
+
+                // Apply adaptive normalization on top (with 1.5x headroom)
+                // This prevents sustained loud sections from saturating
+                let adaptive = (avg_energy / (recent_max * 1.5)).clamp(0.0, 1.0);
+
+                // Blend: 70% calibrated, 30% adaptive for best of both worlds
+                bands_raw[i] = calibrated * 0.7 + adaptive * 0.3;
             }
         }
 

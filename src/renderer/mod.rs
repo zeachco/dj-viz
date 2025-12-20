@@ -4,8 +4,8 @@
 //! on detected musical transitions and overlay blending.
 
 pub mod black_hole;
-pub mod crt_numbers;
 pub mod crt_phosphor;
+pub mod debug;
 pub mod feedback;
 pub mod gravity_flames;
 pub mod kaleidoscope;
@@ -22,8 +22,8 @@ use rand::Rng;
 use crate::audio::AudioAnalysis;
 
 pub use black_hole::BlackHole;
-pub use crt_numbers::CrtNumbers;
 pub use crt_phosphor::CrtPhosphor;
+pub use debug::DebugViz;
 pub use feedback::FeedbackRenderer;
 pub use gravity_flames::GravityFlames;
 pub use kaleidoscope::Kaleidoscope;
@@ -90,8 +90,8 @@ pub struct Renderer {
     notification_frames: u32,
     /// When true, auto-cycling is disabled (user manually selected a visualization)
     locked: bool,
-    /// Debug visualization (CrtNumbers) - toggled with 'd' key
-    debug_viz: CrtNumbers,
+    /// Debug visualization - toggled with 'd' key
+    debug_viz: DebugViz,
     debug_viz_visible: bool,
 }
 
@@ -126,7 +126,7 @@ impl Renderer {
             notification_text: None,
             notification_frames: 0,
             locked: false,
-            debug_viz: CrtNumbers::new(),
+            debug_viz: DebugViz::new(),
             debug_viz_visible: false,
         }
     }

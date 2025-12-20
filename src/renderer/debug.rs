@@ -1,7 +1,8 @@
-//! CRT numbers display visualization.
+//! Debug visualization.
 //!
 //! Displays all audio analysis inputs in a retro CRT terminal style with
-//! RGB chromatic aberration, scanlines, phosphor glow, and vignette effects.
+//! RGB chromatic aberration, scanlines, phosphor glow, vignette effects,
+//! and calibration threshold indicators.
 
 use super::Visualization;
 use nannou::prelude::*;
@@ -25,7 +26,7 @@ const PHOSPHOR_HUE: f32 = 120.0;
 /// Update numbers every N frames (reduces flicker)
 const UPDATE_INTERVAL: u32 = 3;
 
-pub struct CrtNumbers {
+pub struct DebugViz {
     /// Frame counter
     frame_count: u32,
     /// Cached display values (updated every UPDATE_INTERVAL frames)
@@ -41,8 +42,8 @@ pub struct CrtNumbers {
     glow_intensity: f32,
 }
 
-impl CrtNumbers {
-    /// Create a new CrtNumbers visualization
+impl DebugViz {
+    /// Create a new debug visualization
     pub fn new() -> Self {
         Self {
             frame_count: 0,
@@ -138,7 +139,7 @@ impl CrtNumbers {
     }
 }
 
-impl Visualization for CrtNumbers {
+impl Visualization for DebugViz {
     fn update(&mut self, analysis: &AudioAnalysis) {
         self.frame_count += 1;
 
@@ -344,7 +345,14 @@ impl Visualization for CrtNumbers {
             if let Some(value) = numeric_value {
                 let clamped_value = value.clamp(0.0, 1.0);
                 let line_length = clamped_value * indicator_width;
-                let line_y = y - 15.0; // A few pixels below text to avoid overlap
+                let line_y = y - 17.0; // A few pixels below text to avoid overlap
+
+                // Draw background track (dim gray line showing full range)
+                draw.line()
+                    .start(pt2(*x - indicator_width / 2.0, line_y))
+                    .end(pt2(*x + indicator_width / 2.0, line_y))
+                    .weight(1.0)
+                    .color(srgba(80u8, 80u8, 80u8, 100u8));
 
                 // Draw 2.5px line with value-based color
                 let line_color = self.value_color(*value, 220.0 * self.glow_intensity);
@@ -353,6 +361,23 @@ impl Visualization for CrtNumbers {
                     .end(pt2(*x - indicator_width / 2.0 + line_length, line_y))
                     .weight(2.5)
                     .color(line_color);
+
+                // Draw calibration threshold markers
+                // 0.8 threshold (yellow/red transition zone)
+                let marker_0_8_x = *x - indicator_width / 2.0 + 0.8 * indicator_width;
+                draw.line()
+                    .start(pt2(marker_0_8_x, line_y - 4.0))
+                    .end(pt2(marker_0_8_x, line_y + 4.0))
+                    .weight(1.5)
+                    .color(srgba(200u8, 180u8, 0u8, 180u8)); // Yellow marker
+
+                // 0.98 threshold (saturation warning zone)
+                let marker_0_98_x = *x - indicator_width / 2.0 + 0.98 * indicator_width;
+                draw.line()
+                    .start(pt2(marker_0_98_x, line_y - 4.0))
+                    .end(pt2(marker_0_98_x, line_y + 4.0))
+                    .weight(1.5)
+                    .color(srgba(220u8, 50u8, 50u8, 200u8)); // Red marker
             }
         }
 

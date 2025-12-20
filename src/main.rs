@@ -30,6 +30,8 @@ struct Model {
     feedback: RefCell<FeedbackRenderer>,
     #[allow(dead_code)]
     screensaver_inhibitor: Option<utils::ScreensaverInhibitor>,
+    phase_offset: f32,
+    prev_energy: f32,
 }
 
 fn model(app: &App) -> Model {
@@ -79,6 +81,8 @@ fn model(app: &App) -> Model {
         output_capture: OutputCapture::new(),
         feedback: RefCell::new(feedback),
         screensaver_inhibitor,
+        phase_offset: 0.0,
+        prev_energy: 0.0,
     }
 }
 
@@ -96,11 +100,17 @@ fn update(app: &App, model: &mut Model, _update: Update) {
 
     model.renderer.update(&analysis);
 
+    // Detect energy peak and flip zoom direction
+    if analysis.energy >= 0.95 && model.prev_energy < 0.95 {
+        model.phase_offset += std::f32::consts::PI; // Add 180 degrees to reverse direction
+    }
+    model.prev_energy = analysis.energy;
+
     // Update feedback zoom based on beat intensity (bass + energy peaks)
     {
         let mut feedback = model.feedback.borrow_mut();
         // Sine wave oscillation over 30 seconds: zooms in and out
-        let phase = app.time * std::f32::consts::TAU / 30.0;
+        let phase = app.time * std::f32::consts::TAU / 30.0 + model.phase_offset;
         let direction = phase.sin(); // -1 to 1
         // Base zoom follows sine wave
         let base_offset = 0.006 * direction;
