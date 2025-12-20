@@ -106,8 +106,9 @@ impl Renderer {
 
         let mut rng = rand::rng();
         let current_idx = rng.random_range(0..visualizations.len());
+        // Start with medium energy (0.5) for initial overlay selection
         let overlay_indices =
-            Self::select_overlays_for(current_idx, visualizations.len(), &mut rng);
+            Self::select_overlays_for(current_idx, visualizations.len(), 0.5, &mut rng);
 
         Self {
             visualizations,
@@ -121,17 +122,30 @@ impl Renderer {
     }
 
     /// Selects 0-3 random overlay visualization indices (excluding the primary)
+    /// based on audio energy: low energy → fewer overlays, high energy → more overlays
     fn select_overlays_for(
         primary_idx: usize,
         count: usize,
+        energy: f32,
         rng: &mut impl rand::Rng,
     ) -> Vec<usize> {
         if count <= 1 {
             return Vec::new();
         }
 
-        // Randomly choose 0-3 overlays
-        let num_overlays = rng.random_range(0..=3.min(count - 1));
+        // Map energy (0-1) to overlay count (0-3)
+        // Low energy (< 0.3): 0-1 overlays
+        // Medium energy (0.3-0.6): 1-2 overlays
+        // High energy (> 0.6): 2-3 overlays
+        let max_overlays = if energy < 0.3 {
+            rng.random_range(0..=1)
+        } else if energy < 0.6 {
+            rng.random_range(1..=2)
+        } else {
+            rng.random_range(2..=3)
+        };
+
+        let num_overlays = max_overlays.min(count - 1);
         let mut overlays = Vec::with_capacity(num_overlays);
 
         while overlays.len() < num_overlays {
@@ -144,11 +158,11 @@ impl Renderer {
         overlays
     }
 
-    /// Selects new overlay visualizations for the current primary
-    fn select_overlays(&mut self) {
+    /// Selects new overlay visualizations for the current primary based on audio energy
+    fn select_overlays(&mut self, energy: f32) {
         let mut rng = rand::rng();
         self.overlay_indices =
-            Self::select_overlays_for(self.current_idx, self.visualizations.len(), &mut rng);
+            Self::select_overlays_for(self.current_idx, self.visualizations.len(), energy, &mut rng);
     }
 
     /// Shows a notification message for 3 seconds
@@ -161,7 +175,7 @@ impl Renderer {
     pub fn cycle_next(&mut self) {
         if self.visualizations.len() > 1 {
             self.current_idx = (self.current_idx + 1) % self.visualizations.len();
-            self.select_overlays();
+            self.select_overlays(0.5); // Use medium energy for manual cycling
             self.cooldown = COOLDOWN_FRAMES;
             self.locked = false; // Space unlocks and resumes auto-cycling
             println!(
@@ -237,12 +251,17 @@ impl Renderer {
                 }
             };
             self.current_idx = new_idx;
-            self.select_overlays();
+
+            // Use combined energy metric: overall energy + treble (for hi-hats/cymbals) + bass (for kicks)
+            // This makes rapid sounds (techno kicks, hi-hats) increase overlay count
+            let combined_energy = (analysis.energy * 0.5 + analysis.treble * 0.3 + analysis.bass * 0.2).min(1.0);
+            self.select_overlays(combined_energy);
             self.cooldown = COOLDOWN_FRAMES;
             println!(
-                "Switched to visualization {} with {} overlays",
+                "Switched to visualization {} with {} overlays (energy: {:.2})",
                 self.current_idx,
-                self.overlay_indices.len()
+                self.overlay_indices.len(),
+                combined_energy
             );
         }
 
