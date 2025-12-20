@@ -58,3 +58,4 @@ Future input layers (e.g., webcam) should follow the same pattern as `audio/`.
 ## Skills
 
 - `/new-visualization <name>` - Generate a new visualization module (see `.claude/skills/new-visualization.md`)
+- `/release` - Create a new release with automated version bumping and GitHub release creation (see `.claude/skills/release.md`)

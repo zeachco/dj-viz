@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: read
 
 jobs:
   auto-release:
@@ -108,3 +109,63 @@ jobs:
           git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
           git push origin main
           git push origin "v$NEW_VERSION"
+
+      - name: Generate release notes
+        if: steps.check.outputs.should_release == 'true'
+        id: release_notes
+        run: |
+          LAST_TAG="${{ steps.check.outputs.last_tag }}"
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+
+          # Get commits between tags
+          if [ -z "$LAST_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"%s" HEAD~10..HEAD)
+          else
+            COMMITS=$(git log --pretty=format:"%s" ${LAST_TAG}..v${NEW_VERSION})
+          fi
+
+          # Categorize commits
+          FEATURES=$(echo "$COMMITS" | grep "^feat:" | sed 's/^feat: /- /' || true)
+          FIXES=$(echo "$COMMITS" | grep "^fix:" | sed 's/^fix: /- /' || true)
+          IMPROVEMENTS=$(echo "$COMMITS" | grep -E "^(chore|refactor|perf):" | sed 's/^[^:]*: /- /' || true)
+
+          # Build release notes
+          NOTES="## Release v${NEW_VERSION}"
+
+          if [ -n "$FEATURES" ]; then
+            NOTES="$NOTES
+
+          ## Features
+          $FEATURES"
+          fi
+
+          if [ -n "$FIXES" ]; then
+            NOTES="$NOTES
+
+          ## Fixes
+          $FIXES"
+          fi
+
+          if [ -n "$IMPROVEMENTS" ]; then
+            NOTES="$NOTES
+
+          ## Improvements
+          $IMPROVEMENTS"
+          fi
+
+          # Save to file and output
+          echo "$NOTES" > /tmp/release_notes.md
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        if: steps.check.outputs.should_release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+
+          gh release create "v$NEW_VERSION" \
+            --title "v$NEW_VERSION" \
+            --notes "${{ steps.release_notes.outputs.notes }}"
