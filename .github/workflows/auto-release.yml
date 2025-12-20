@@ -12,6 +12,9 @@ permissions:
 jobs:
   auto-release:
     runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      new_version: ${{ steps.version.outputs.new_version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -168,4 +171,152 @@ jobs:
 
           gh release create "v$NEW_VERSION" \
             --title "v$NEW_VERSION" \
-            --notes "${{ steps.release_notes.outputs.notes }}"
+            --notes "${{ steps.release_notes.outputs.notes }}" \
+            --draft
+
+  build-linux:
+    needs: auto-release
+    if: needs.auto-release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.auto-release.outputs.new_version }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev pkg-config
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Rename binary
+        run: |
+          cp target/release/dj-viz dj-viz-linux-x86_64
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NEW_VERSION="${{ needs.auto-release.outputs.new_version }}"
+          gh release upload "v$NEW_VERSION" dj-viz-linux-x86_64 --clobber
+
+  build-raspberry-pi:
+    needs: auto-release
+    if: needs.auto-release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-unknown-linux-gnu
+            artifact: dj-viz-linux-aarch64
+          - target: armv7-unknown-linux-gnueabihf
+            artifact: dj-viz-linux-armv7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.auto-release.outputs.new_version }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cross
+        run: |
+          if ! command -v cross &> /dev/null; then
+            cargo install cross --git https://github.com/cross-rs/cross
+          fi
+
+      - name: Build release
+        env:
+          PKG_CONFIG_ALLOW_CROSS: 1
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Rename binary
+        run: |
+          cp target/${{ matrix.target }}/release/dj-viz ${{ matrix.artifact }}
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NEW_VERSION="${{ needs.auto-release.outputs.new_version }}"
+          gh release upload "v$NEW_VERSION" ${{ matrix.artifact }} --clobber
+
+  build-windows:
+    needs: auto-release
+    if: needs.auto-release.outputs.should_release == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.auto-release.outputs.new_version }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Rename binary
+        run: |
+          Copy-Item target/release/dj-viz.exe dj-viz-windows-x86_64.exe
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $NEW_VERSION="${{ needs.auto-release.outputs.new_version }}"
+          gh release upload "v$NEW_VERSION" dj-viz-windows-x86_64.exe --clobber
+
+  publish-release:
+    needs: [auto-release, build-linux, build-raspberry-pi, build-windows]
+    if: needs.auto-release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NEW_VERSION="${{ needs.auto-release.outputs.new_version }}"
+          gh release edit "v$NEW_VERSION" --draft=false
