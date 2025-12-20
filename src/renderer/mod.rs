@@ -1,19 +1,29 @@
+pub mod black_hole;
+pub mod crt_phosphor;
 pub mod feedback;
+pub mod kaleidoscope;
+pub mod lava_blobs;
 pub mod solar_beat;
 pub mod spectrogram;
 pub mod squares;
 pub mod tesla_coil;
+pub mod vhs_distortion;
 
 use nannou::prelude::*;
 use rand::Rng;
 
 use crate::audio::AudioAnalysis;
 
+pub use black_hole::BlackHole;
+pub use crt_phosphor::CrtPhosphor;
 pub use feedback::FeedbackRenderer;
+pub use kaleidoscope::Kaleidoscope;
+pub use lava_blobs::LavaBlobs;
 pub use solar_beat::SolarBeat;
 pub use spectrogram::Spectrogram;
 pub use squares::Squares;
 pub use tesla_coil::TeslaCoil;
+pub use vhs_distortion::VhsDistortion;
 
 /// Trait that all visualizations must implement
 pub trait Visualization {
@@ -96,6 +106,11 @@ impl Renderer {
             Box::new(Spectrogram::new()),
             Box::new(Squares::new()),
             Box::new(TeslaCoil::new()),
+            Box::new(Kaleidoscope::new()),
+            Box::new(LavaBlobs::new()),
+            Box::new(VhsDistortion::new()),
+            Box::new(CrtPhosphor::new()),
+            Box::new(BlackHole::new()),
         ];
 
         let mut rng = rand::rng();
