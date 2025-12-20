@@ -1,5 +1,7 @@
 # dj-viz
 
+[![Build](https://github.com/zeachco/dj-viz/actions/workflows/build.yml/badge.svg)](https://github.com/zeachco/dj-viz/actions/workflows/build.yml)
+
 Real-time audio visualizer built with Rust and nannou.
 
 ## Download
