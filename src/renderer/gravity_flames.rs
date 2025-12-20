@@ -39,8 +39,6 @@ struct FlameParticle {
     age: f32,
     /// 0.0-1.0, affects color (hot=1.0, cool=0.0)
     temperature: f32,
-    /// Which frequency band (0-7) controls this particle
-    band_idx: usize,
     /// Particle radius
     size: f32,
 }
@@ -119,7 +117,6 @@ impl GravityFlames {
             velocity: Vec2::new(final_angle.cos() * speed, final_angle.sin() * speed),
             age: 0.0,
             temperature: 1.0,
-            band_idx,
             size: 3.0 + rng.random_range(0.0..5.0),
         };
 

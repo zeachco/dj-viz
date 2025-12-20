@@ -40,15 +40,17 @@ impl SourcePipe {
             .as_ref()
             .and_then(|name| {
                 let is_input = config.last_device_is_input.unwrap_or(false);
-                devices.iter().position(|d| d.name == *name && d.is_input == is_input)
+                devices
+                    .iter()
+                    .position(|d| d.name == *name && d.is_input == is_input)
             })
             .or_else(|| {
                 // Prefer pipewire or pulse input devices (more reliable on Linux)
-                devices.iter().position(|d| d.is_input && d.name == "pipewire")
+                devices
+                    .iter()
+                    .position(|d| d.is_input && d.name == "pipewire")
             })
-            .or_else(|| {
-                devices.iter().position(|d| d.is_input && d.name == "pulse")
-            })
+            .or_else(|| devices.iter().position(|d| d.is_input && d.name == "pulse"))
             .or_else(|| {
                 // Fall back to default output device for loopback capture
                 let host = cpal::default_host();
@@ -68,7 +70,10 @@ impl SourcePipe {
         if let Some(ref _s) = stream {
             let info = &devices[start_index];
             let device_type = if info.is_input { "input" } else { "output" };
-            println!("[{}] Selected: {} ({})", start_index, info.name, device_type);
+            println!(
+                "[{}] Selected: {} ({})",
+                start_index, info.name, device_type
+            );
         }
 
         Self {
@@ -112,7 +117,11 @@ impl SourcePipe {
         if let Ok(input_devices) = host.input_devices() {
             for device in input_devices {
                 if let Ok(name) = device.name() {
-                    devices.push(DeviceInfo { device, name, is_input: true });
+                    devices.push(DeviceInfo {
+                        device,
+                        name,
+                        is_input: true,
+                    });
                 }
             }
         }
@@ -120,7 +129,11 @@ impl SourcePipe {
         if let Ok(output_devices) = host.output_devices() {
             for device in output_devices {
                 if let Ok(name) = device.name() {
-                    devices.push(DeviceInfo { device, name, is_input: false });
+                    devices.push(DeviceInfo {
+                        device,
+                        name,
+                        is_input: false,
+                    });
                 }
             }
         }
@@ -161,8 +174,12 @@ impl SourcePipe {
         }
     }
 
-    fn build_stream(device_info: &DeviceInfo, audio_buffer: Arc<Mutex<Vec<f32>>>) -> Option<Stream> {
-        let stream_config = Self::get_config_with_timeout(&device_info.device, device_info.is_input)?;
+    fn build_stream(
+        device_info: &DeviceInfo,
+        audio_buffer: Arc<Mutex<Vec<f32>>>,
+    ) -> Option<Stream> {
+        let stream_config =
+            Self::get_config_with_timeout(&device_info.device, device_info.is_input)?;
         let channels = stream_config.channels as usize;
 
         let err_fn = |err| eprintln!("Audio stream error: {}", err);
@@ -234,11 +251,6 @@ impl SourcePipe {
             Some((device_name, false))
         }
     }
-
-    pub fn device_count(&self) -> usize {
-        self.devices.len()
-    }
-
 
     /// Get current audio samples with auto-gain normalization
     pub fn stream(&mut self) -> Vec<f32> {

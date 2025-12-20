@@ -266,7 +266,7 @@ impl Skeleton {
             // Need to account for full diagonal distance from corner
             let half_width = SPAWN_AREA_WIDTH / 2.0;
             let half_height = SPAWN_AREA_HEIGHT / 2.0;
-            (half_width + half_height) // Large enough to contain corner-to-corner movement
+            half_width + half_height // Large enough to contain corner-to-corner movement
         } else {
             BASE_EDGE_OFFSET + (SKELETON_HEIGHT_FACTOR * self.scale)
         };

@@ -3,6 +3,7 @@
 //! Manages the visualization pipeline, including automatic cycling between effects
 //! on detected musical transitions and overlay blending.
 
+pub mod beat_bars;
 pub mod black_hole;
 pub mod crt_phosphor;
 pub mod dancing_skeletons;
@@ -16,13 +17,13 @@ pub mod solar_beat;
 pub mod spectro_road;
 pub mod squares;
 pub mod tesla_coil;
-pub mod vhs_distortion;
 
 use nannou::prelude::*;
 use rand::Rng;
 
 use crate::audio::AudioAnalysis;
 
+pub use beat_bars::BeatBars;
 pub use black_hole::BlackHole;
 pub use crt_phosphor::CrtPhosphor;
 pub use dancing_skeletons::DancingSkeletons;
@@ -36,7 +37,6 @@ pub use solar_beat::SolarBeat;
 pub use spectro_road::SpectroRoad;
 pub use squares::Squares;
 pub use tesla_coil::TeslaCoil;
-pub use vhs_distortion::VhsDistortion;
 
 /// Trait that all visualizations must implement
 pub trait Visualization {
@@ -96,7 +96,7 @@ pub struct Renderer {
     locked: bool,
     /// Debug visualization - toggled with 'd' key
     debug_viz: DebugViz,
-    debug_viz_visible: bool,
+    pub debug_viz_visible: bool,
 }
 
 impl Renderer {
@@ -110,7 +110,7 @@ impl Renderer {
             Box::new(TeslaCoil::new()),
             Box::new(Kaleidoscope::new()),
             Box::new(LavaBlobs::new()),
-            Box::new(VhsDistortion::new()),
+            Box::new(BeatBars::new()),
             Box::new(CrtPhosphor::new()),
             Box::new(BlackHole::new()),
             Box::new(GravityFlames::new()),
@@ -223,11 +223,6 @@ impl Renderer {
         Some(name)
     }
 
-    /// Returns the number of available visualizations
-    pub fn visualization_count(&self) -> usize {
-        self.visualizations.len()
-    }
-
     /// Get visualization name by index
     fn visualization_name(idx: usize) -> &'static str {
         match idx {
@@ -237,7 +232,7 @@ impl Renderer {
             3 => "TeslaCoil",
             4 => "Kaleidoscope",
             5 => "LavaBlobs",
-            6 => "VhsDistortion",
+            6 => "BeatBars",
             7 => "CrtPhosphor",
             8 => "BlackHole",
             9 => "GravityFlames",

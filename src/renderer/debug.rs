@@ -6,25 +6,16 @@
 
 use super::Visualization;
 use nannou::prelude::*;
+use std::time::Instant;
 
 use crate::audio::AudioAnalysis;
 
 /// Base font size for numbers
 const FONT_SIZE: u32 = 24;
-/// Pixel offset for RGB fringing
-const RGB_OFFSET: f32 = 2.0;
-/// Pixels between scanlines
-const SCANLINE_SPACING: f32 = 3.0;
-/// Darkness of scanlines (0-255)
-const SCANLINE_ALPHA: u8 = 15;
-/// Number of blur passes
-const BLUR_LAYERS: usize = 3;
-/// How much each blur layer fades
-const BLUR_ALPHA_DECAY: f32 = 0.5;
 /// Green CRT phosphor (classic terminal)
 const PHOSPHOR_HUE: f32 = 120.0;
 /// Update numbers every N frames (reduces flicker)
-const UPDATE_INTERVAL: u32 = 3;
+const UPDATE_INTERVAL: u32 = 2;
 
 pub struct DebugViz {
     /// Frame counter
@@ -43,10 +34,12 @@ pub struct DebugViz {
     display_band_mins: [f32; 8],
     /// Tracked max values for each band (for visualization)
     display_band_maxs: [f32; 8],
-    /// Scanline offset for subtle animation
-    scanline_offset: f32,
     /// Phosphor glow intensity
     glow_intensity: f32,
+    /// Last frame time for FPS calculation
+    last_frame_time: Instant,
+    /// Smoothed FPS display value
+    display_fps: f32,
 }
 
 impl DebugViz {
@@ -65,8 +58,9 @@ impl DebugViz {
             display_bpm: 0.0,
             display_band_mins: [0.0; 8],
             display_band_maxs: [0.0; 8],
-            scanline_offset: 0.0,
             glow_intensity: 0.5,
+            last_frame_time: Instant::now(),
+            display_fps: 0.0,
         }
     }
 
@@ -155,11 +149,13 @@ impl Visualization for DebugViz {
     fn update(&mut self, analysis: &AudioAnalysis) {
         self.frame_count += 1;
 
-        // Animate scanlines
-        self.scanline_offset += 0.5;
-        if self.scanline_offset >= SCANLINE_SPACING {
-            self.scanline_offset -= SCANLINE_SPACING;
-        }
+        // Calculate FPS
+        let now = Instant::now();
+        let delta = now.duration_since(self.last_frame_time).as_secs_f32();
+        let current_fps = if delta > 0.0 { 1.0 / delta } else { 0.0 };
+        // Smooth FPS with exponential moving average
+        self.display_fps = self.display_fps * 0.9 + current_fps * 0.1;
+        self.last_frame_time = now;
 
         // Update display values every UPDATE_INTERVAL frames
         if self.frame_count % UPDATE_INTERVAL == 0 {
@@ -185,14 +181,16 @@ impl Visualization for DebugViz {
             if current < self.display_band_mins[i] || self.display_band_mins[i] == 0.0 {
                 self.display_band_mins[i] = current;
             } else {
-                self.display_band_mins[i] = self.display_band_mins[i] * MIN_TRACK_RATE + current * (1.0 - MIN_TRACK_RATE);
+                self.display_band_mins[i] =
+                    self.display_band_mins[i] * MIN_TRACK_RATE + current * (1.0 - MIN_TRACK_RATE);
             }
 
             // Track maximum - if current is higher, use it; otherwise slowly drift towards current
             if current > self.display_band_maxs[i] {
                 self.display_band_maxs[i] = current;
             } else {
-                self.display_band_maxs[i] = self.display_band_maxs[i] * MAX_TRACK_RATE + current * (1.0 - MAX_TRACK_RATE);
+                self.display_band_maxs[i] =
+                    self.display_band_maxs[i] * MAX_TRACK_RATE + current * (1.0 - MAX_TRACK_RATE);
             }
         }
 
@@ -211,6 +209,16 @@ impl Visualization for DebugViz {
             .x_y(center.x, center.y)
             .w_h(bounds_w, bounds_h)
             .color(srgba(0u8, 0u8, 0u8, 180u8));
+
+        // Draw FPS at top left
+        let fps_text = format!("FPS: {:.0}", self.display_fps);
+        let fps_x = bounds.left() + 60.0;
+        let fps_y = bounds.top() - 30.0;
+        let fps_color = self.phosphor_color(255.0 * self.glow_intensity);
+        draw.text(&fps_text)
+            .x_y(fps_x, fps_y)
+            .color(fps_color)
+            .font_size(FONT_SIZE);
 
         // Layout configuration
         let column_spacing = bounds_w / 4.0;
@@ -307,90 +315,6 @@ impl Visualization for DebugViz {
             None, // No indicator for BPM
         ));
 
-        // Draw blur layers (behind text)
-        for blur_idx in (0..BLUR_LAYERS).rev() {
-            let offset = (blur_idx + 1) as f32 * 1.5;
-            let alpha_scale = BLUR_ALPHA_DECAY.powi(blur_idx as i32);
-            let base_alpha = 100.0 * self.glow_intensity * alpha_scale;
-
-            for (label, value, x, y, numeric_value) in &text_data {
-                let text_str = format!("{}: {}", label, value);
-                // Use value-based color if numeric, otherwise use phosphor green
-                let color = if let Some(val) = numeric_value {
-                    self.value_color(*val, base_alpha)
-                } else {
-                    self.phosphor_color(base_alpha)
-                };
-
-                // Draw offset copies for blur effect
-                draw.text(&text_str)
-                    .x_y(x + offset, *y)
-                    .color(color)
-                    .font_size(FONT_SIZE);
-                draw.text(&text_str)
-                    .x_y(x - offset, *y)
-                    .color(color)
-                    .font_size(FONT_SIZE);
-                draw.text(&text_str)
-                    .x_y(*x, y + offset)
-                    .color(color)
-                    .font_size(FONT_SIZE);
-                draw.text(&text_str)
-                    .x_y(*x, y - offset)
-                    .color(color)
-                    .font_size(FONT_SIZE);
-            }
-        }
-
-        // Draw RGB fringing (chromatic aberration)
-        for (label, value, x, y, numeric_value) in &text_data {
-            let text_str = format!("{}: {}", label, value);
-
-            // Get base color from value, or use phosphor green for non-numeric
-            let base_color = if let Some(val) = numeric_value {
-                self.value_color(*val, 180.0 * self.glow_intensity)
-            } else {
-                self.phosphor_color(180.0 * self.glow_intensity)
-            };
-
-            // Extract RGB and apply channel tinting for chromatic aberration
-            // Red channel (shifted left) - enhance red
-            let color_r = srgba(
-                base_color.red.saturating_add(40),
-                base_color.green / 2,
-                base_color.blue / 2,
-                base_color.alpha,
-            );
-            draw.text(&text_str)
-                .x_y(x - RGB_OFFSET, *y)
-                .color(color_r)
-                .font_size(FONT_SIZE);
-
-            // Green channel (no shift - base position) - enhance green
-            let color_g = srgba(
-                base_color.red / 2,
-                base_color.green,
-                base_color.blue / 2,
-                (200.0 * self.glow_intensity) as u8,
-            );
-            draw.text(&text_str)
-                .x_y(*x, *y)
-                .color(color_g)
-                .font_size(FONT_SIZE);
-
-            // Blue channel (shifted right) - enhance blue
-            let color_b = srgba(
-                base_color.red / 2,
-                base_color.green / 2,
-                base_color.blue.saturating_add(40),
-                base_color.alpha,
-            );
-            draw.text(&text_str)
-                .x_y(x + RGB_OFFSET, *y)
-                .color(color_b)
-                .font_size(FONT_SIZE);
-        }
-
         // Draw main text with value-based colors
         for (label, value, x, y, numeric_value) in &text_data {
             let text_str = format!("{}: {}", label, value);
@@ -450,55 +374,6 @@ impl Visualization for DebugViz {
                         .weight(1.5)
                         .color(srgba(220u8, 50u8, 50u8, 200u8)); // Red marker
                 }
-            }
-        }
-
-        // Draw scanlines (horizontal lines across entire screen)
-        let num_scanlines = (bounds_h / SCANLINE_SPACING) as usize + 1;
-        for i in 0..num_scanlines {
-            let y = bounds.bottom() + i as f32 * SCANLINE_SPACING + self.scanline_offset;
-            if y > bounds.top() {
-                break;
-            }
-
-            draw.line()
-                .start(pt2(bounds.left(), y))
-                .end(pt2(bounds.right(), y))
-                .weight(1.0)
-                .color(srgba(0, 0, 0, SCANLINE_ALPHA));
-        }
-
-        // Draw CRT vignette (darker edges)
-        for i in 0..15 {
-            let t = i as f32 / 15.0;
-            let inset = t * 60.0;
-            let alpha = (t * 0.15 * 255.0) as u8;
-
-            draw.rect()
-                .x_y(center.x, center.y)
-                .w_h(bounds_w - inset * 2.0, bounds_h - inset * 2.0)
-                .no_fill()
-                .stroke_weight(2.0)
-                .stroke(srgba(0, 0, 0, alpha));
-        }
-
-        // Draw corner glow (CRT curvature effect)
-        let corner_size = 100.0;
-        let corners = [(1.0, 1.0), (1.0, -1.0), (-1.0, 1.0), (-1.0, -1.0)];
-
-        for (corner_x, corner_y) in corners {
-            let cx = center.x + corner_x * (bounds_w / 2.0 - corner_size / 2.0);
-            let cy = center.y + corner_y * (bounds_h / 2.0 - corner_size / 2.0);
-
-            for i in 0..8 {
-                let t = i as f32 / 8.0;
-                let size = corner_size * (1.0 - t * 0.6);
-                let alpha = ((1.0 - t) * 0.4 * 255.0) as u8;
-
-                draw.ellipse()
-                    .x_y(cx, cy)
-                    .w_h(size, size)
-                    .color(srgba(0, 0, 0, alpha));
             }
         }
     }

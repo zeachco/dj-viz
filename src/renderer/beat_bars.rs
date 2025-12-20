@@ -18,7 +18,7 @@ const MAX_TRACKING_OFFSET: f32 = 50.0;
 /// Chromatic aberration max offset
 const MAX_CHROMATIC_OFFSET: f32 = 15.0;
 
-pub struct VhsDistortion {
+pub struct BeatBars {
     /// Tracking error offset (simulates VHS tracking issues)
     tracking_offset: f32,
     /// Target tracking offset
@@ -47,7 +47,7 @@ pub struct VhsDistortion {
     color_shift: f32,
 }
 
-impl VhsDistortion {
+impl BeatBars {
     pub fn new() -> Self {
         Self {
             tracking_offset: 0.0,
@@ -100,7 +100,7 @@ impl VhsDistortion {
     }
 }
 
-impl Visualization for VhsDistortion {
+impl Visualization for BeatBars {
     fn update(&mut self, analysis: &AudioAnalysis) {
         self.frame_count = self.frame_count.wrapping_add(1);
         let mut rng = rand::rng();
@@ -117,8 +117,8 @@ impl Visualization for VhsDistortion {
 
         // Tracking error triggered by bass hits
         if analysis.bass > 0.6 && rng.random::<f32>() < 0.3 {
-            self.target_tracking = rng.random_range(-MAX_TRACKING_OFFSET..MAX_TRACKING_OFFSET)
-                * analysis.bass;
+            self.target_tracking =
+                rng.random_range(-MAX_TRACKING_OFFSET..MAX_TRACKING_OFFSET) * analysis.bass;
         }
         self.tracking_offset = self.tracking_offset * 0.9 + self.target_tracking * 0.1;
         self.target_tracking *= 0.95;
@@ -148,8 +148,7 @@ impl Visualization for VhsDistortion {
         }
 
         // Color shift drifts over time
-        self.color_shift = (self.frame_count as f32 * 0.02).sin() * 0.5
-            + analysis.treble * 0.3;
+        self.color_shift = (self.frame_count as f32 * 0.02).sin() * 0.5 + analysis.treble * 0.3;
     }
 
     fn draw(&self, draw: &Draw, bounds: Rect) {
@@ -167,8 +166,8 @@ impl Visualization for VhsDistortion {
             let low_band = band_pos as usize;
             let high_band = (low_band + 1).min(NUM_BANDS - 1);
             let t = band_pos - low_band as f32;
-            let magnitude = self.smoothed_bands[low_band] * (1.0 - t)
-                + self.smoothed_bands[high_band] * t;
+            let magnitude =
+                self.smoothed_bands[low_band] * (1.0 - t) + self.smoothed_bands[high_band] * t;
 
             let bar_height = magnitude * h * 0.8;
             let x = left + i as f32 * bar_width + bar_width / 2.0;
@@ -234,8 +233,7 @@ impl Visualization for VhsDistortion {
         // Draw scanlines
         let scanline_spacing = h / NUM_SCANLINES as f32;
         for i in 0..NUM_SCANLINES {
-            let y = bottom + i as f32 * scanline_spacing
-                + (self.scanline_phase % scanline_spacing);
+            let y = bottom + i as f32 * scanline_spacing + (self.scanline_phase % scanline_spacing);
 
             // Alternating dark lines
             let alpha = if i % 2 == 0 { 0.15 } else { 0.05 };
@@ -311,26 +309,12 @@ impl Visualization for VhsDistortion {
             let hue = rng.random_range(0.0..360.0);
             let (r, g, b) = Self::hsv_to_rgb(hue, 0.3, 0.9);
 
-            draw.rect()
-                .xy(bounds.xy())
-                .wh(bounds.wh())
-                .color(srgba(
-                    (r * 255.0) as u8,
-                    (g * 255.0) as u8,
-                    (b * 255.0) as u8,
-                    (flash_alpha * 255.0) as u8,
-                ));
+            draw.rect().xy(bounds.xy()).wh(bounds.wh()).color(srgba(
+                (r * 255.0) as u8,
+                (g * 255.0) as u8,
+                (b * 255.0) as u8,
+                (flash_alpha * 255.0) as u8,
+            ));
         }
-
-        // VHS timestamp overlay (bottom right)
-        let timestamp_alpha = 0.4 + self.energy * 0.3;
-        let minutes = (self.frame_count / 3600) % 60;
-        let seconds = (self.frame_count / 60) % 60;
-        let text = format!("{:02}:{:02}", minutes, seconds);
-
-        draw.text(&text)
-            .x_y(bounds.right() - 50.0, bounds.bottom() + 20.0)
-            .color(srgba(255, 255, 255, (timestamp_alpha * 255.0) as u8))
-            .font_size(14);
     }
 }
