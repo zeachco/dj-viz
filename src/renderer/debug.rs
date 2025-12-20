@@ -37,6 +37,7 @@ pub struct DebugViz {
     display_energy: f32,
     display_energy_diff: f32,
     display_transition: bool,
+    display_zoom_shift: bool,
     /// Tracked min values for each band (for visualization)
     display_band_mins: [f32; 8],
     /// Tracked max values for each band (for visualization)
@@ -59,6 +60,7 @@ impl DebugViz {
             display_energy: 0.0,
             display_energy_diff: 0.0,
             display_transition: false,
+            display_zoom_shift: false,
             display_band_mins: [0.0; 8],
             display_band_maxs: [0.0; 8],
             scanline_offset: 0.0,
@@ -166,6 +168,7 @@ impl Visualization for DebugViz {
             self.display_energy = analysis.energy;
             self.display_energy_diff = analysis.energy_diff;
             self.display_transition = analysis.transition_detected;
+            self.display_zoom_shift = analysis.zoom_direction_shift;
         }
 
         // Update tracked min/max for each band with slow decay towards current value
@@ -276,6 +279,17 @@ impl Visualization for DebugViz {
             },
             col3_x,
             start_y - row_spacing * 2.0,
+            None, // Boolean, no indicator
+        ));
+        text_data.push((
+            "Zoom Shift".to_string(),
+            if self.display_zoom_shift {
+                "TRUE".to_string()
+            } else {
+                "FALSE".to_string()
+            },
+            col3_x,
+            start_y - row_spacing * 3.0,
             None, // Boolean, no indicator
         ));
 

@@ -35,6 +35,8 @@ pub struct AudioAnalysis {
     pub treble: f32,
     /// Difference between current energy and lagged energy (can be negative)
     pub energy_diff: f32,
+    /// Whether zoom direction should shift (triggered when energy_diff crosses ±0.15)
+    pub zoom_direction_shift: bool,
     /// Tracked minimum values for each band (for normalization)
     pub band_mins: [f32; NUM_BANDS],
     /// Tracked maximum values for each band (for normalization)
@@ -51,6 +53,7 @@ impl Default for AudioAnalysis {
             mids: 0.0,
             treble: 0.0,
             energy_diff: 0.0,
+            zoom_direction_shift: false,
             band_mins: [0.0; NUM_BANDS],
             band_maxs: [0.0; NUM_BANDS],
         }
@@ -85,6 +88,9 @@ pub struct AudioAnalyzer {
     // Min/max tracking for normalization (slowly drift towards 0)
     band_mins: [f32; NUM_BANDS],
     band_maxs: [f32; NUM_BANDS],
+
+    // Zoom direction shift detection
+    prev_energy_diff: f32,
 
     // Frame skipping for performance
     frame_count: u32,
@@ -135,6 +141,7 @@ impl AudioAnalyzer {
             prev_bands: [0.0; NUM_BANDS],
             band_mins: [0.0; NUM_BANDS],
             band_maxs: [0.0; NUM_BANDS],
+            prev_energy_diff: 0.0,
             frame_count: 0,
             last_analysis: AudioAnalysis::default(),
         }
@@ -173,30 +180,35 @@ impl AudioAnalyzer {
                 // Normalize and convert to dB-ish scale
                 let avg_energy = energy / (high - low) as f32;
 
-                // Convert to dB scale for better dynamic range
+                // Convert to dB scale and do initial rough normalization
                 let db = 10.0 * (avg_energy + 1e-10).log10();
+                let rough_normalized = ((db + 100.0) / 160.0).clamp(0.0, 1.0); // Rough -100 to +60 dB range
 
-                // Update min/max tracking with slow decay towards 0
-                const MIN_DECAY: f32 = 0.9995; // Very slow drift towards 0
-                const MAX_DECAY: f32 = 0.9995;
+                // Adaptive normalization: track min/max of the output (0-1 range)
+                // This creates perceptual adaptation - sustained intensity becomes less intense
+                const MIN_DRIFT: f32 = 0.9995; // Very slow drift towards current
+                const MAX_DRIFT: f32 = 0.9995;
 
-                // Update minimum - track lowest value, slowly drift up towards 0
-                if db < self.band_mins[i] || self.band_mins[i] == 0.0 {
-                    self.band_mins[i] = db;
+                // Update minimum - track lowest output, slowly drift up towards current
+                if rough_normalized < self.band_mins[i] || self.band_mins[i] == 0.0 {
+                    self.band_mins[i] = rough_normalized;
                 } else {
-                    self.band_mins[i] = self.band_mins[i] * MIN_DECAY;
+                    // Drift upwards towards current value
+                    self.band_mins[i] = self.band_mins[i] * MIN_DRIFT + rough_normalized * (1.0 - MIN_DRIFT);
                 }
 
-                // Update maximum - track highest value, slowly drift down towards 0
-                if db > self.band_maxs[i] {
-                    self.band_maxs[i] = db;
+                // Update maximum - track highest output, slowly drift down towards current
+                if rough_normalized > self.band_maxs[i] {
+                    self.band_maxs[i] = rough_normalized;
                 } else {
-                    self.band_maxs[i] = self.band_maxs[i] * MAX_DECAY;
+                    // Drift downwards towards current value
+                    self.band_maxs[i] = self.band_maxs[i] * MAX_DRIFT + rough_normalized * (1.0 - MAX_DRIFT);
                 }
 
-                // Normalize using tracked min/max
-                let range = (self.band_maxs[i] - self.band_mins[i]).max(1.0); // Prevent division by zero
-                let normalized = ((db - self.band_mins[i]) / range).clamp(0.0, 1.0);
+                // Re-normalize using tracked min/max to utilize full 0-1 range
+                // If something stays intense, min drifts up and range shrinks, making it less intense
+                let range = (self.band_maxs[i] - self.band_mins[i]).max(0.01); // Prevent division by zero
+                let normalized = ((rough_normalized - self.band_mins[i]) / range).clamp(0.0, 1.0);
 
                 bands_raw[i] = normalized;
             }
@@ -227,6 +239,15 @@ impl AudioAnalyzer {
         // Compute energy difference (positive = rising energy, negative = falling)
         let energy_diff = self.smoothed_energy - self.lagged_energy;
 
+        // Detect zoom direction shift when energy_diff crosses ±0.15 threshold
+        const ZOOM_THRESHOLD: f32 = 0.15;
+        let zoom_direction_shift =
+            (self.prev_energy_diff < ZOOM_THRESHOLD && energy_diff >= ZOOM_THRESHOLD) ||
+            (self.prev_energy_diff > -ZOOM_THRESHOLD && energy_diff <= -ZOOM_THRESHOLD) ||
+            (self.prev_energy_diff >= ZOOM_THRESHOLD && energy_diff < ZOOM_THRESHOLD) ||
+            (self.prev_energy_diff <= -ZOOM_THRESHOLD && energy_diff > -ZOOM_THRESHOLD);
+
+        self.prev_energy_diff = energy_diff;
         self.prev_bands = bands_raw;
 
         // Transition detection
@@ -245,6 +266,7 @@ impl AudioAnalyzer {
             mids,
             treble,
             energy_diff,
+            zoom_direction_shift,
             band_mins: self.band_mins,
             band_maxs: self.band_maxs,
         };
