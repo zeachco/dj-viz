@@ -184,35 +184,51 @@ impl Visualization for VhsDistortion {
                 0.0
             };
 
-            // Draw with chromatic aberration (RGB split)
-            // Red channel (shifted left)
-            draw.rect()
-                .x_y(x + x_offset - self.chromatic_offset, bottom + bar_height / 2.0)
-                .w_h(bar_width - 2.0, bar_height)
-                .color(srgba((r * 255.0) as u8, 0, 0, 80));
+            // Draw with chromatic aberration (RGB split) and vertical gradient
+            // Number of gradient segments for smooth transition
+            let gradient_segments = 20;
+            let segment_height = bar_height / gradient_segments as f32;
 
-            // Green channel (center)
-            draw.rect()
-                .x_y(x + x_offset, bottom + bar_height / 2.0)
-                .w_h(bar_width - 2.0, bar_height)
-                .color(srgba(0, (g * 255.0) as u8, 0, 80));
+            for seg in 0..gradient_segments {
+                // Calculate alpha based on position (0.0 at bottom, 1.0 at top)
+                let seg_y_offset = seg as f32 * segment_height;
+                let alpha_ratio = seg as f32 / gradient_segments as f32;
+                let seg_y = bottom + seg_y_offset + segment_height / 2.0;
 
-            // Blue channel (shifted right)
-            draw.rect()
-                .x_y(x + x_offset + self.chromatic_offset, bottom + bar_height / 2.0)
-                .w_h(bar_width - 2.0, bar_height)
-                .color(srgba(0, 0, (b * 255.0) as u8, 80));
+                let red_alpha = (80.0 * alpha_ratio) as u8;
+                let green_alpha = (80.0 * alpha_ratio) as u8;
+                let blue_alpha = (80.0 * alpha_ratio) as u8;
+                let combined_alpha = (120.0 * alpha_ratio) as u8;
 
-            // Combined color on top
-            draw.rect()
-                .x_y(x + x_offset, bottom + bar_height / 2.0)
-                .w_h(bar_width - 2.0, bar_height)
-                .color(srgba(
-                    (r * 255.0) as u8,
-                    (g * 255.0) as u8,
-                    (b * 255.0) as u8,
-                    120,
-                ));
+                // Red channel (shifted left)
+                draw.rect()
+                    .x_y(x + x_offset - self.chromatic_offset, seg_y)
+                    .w_h(bar_width - 2.0, segment_height + 1.0)
+                    .color(srgba((r * 255.0) as u8, 0, 0, red_alpha));
+
+                // Green channel (center)
+                draw.rect()
+                    .x_y(x + x_offset, seg_y)
+                    .w_h(bar_width - 2.0, segment_height + 1.0)
+                    .color(srgba(0, (g * 255.0) as u8, 0, green_alpha));
+
+                // Blue channel (shifted right)
+                draw.rect()
+                    .x_y(x + x_offset + self.chromatic_offset, seg_y)
+                    .w_h(bar_width - 2.0, segment_height + 1.0)
+                    .color(srgba(0, 0, (b * 255.0) as u8, blue_alpha));
+
+                // Combined color on top
+                draw.rect()
+                    .x_y(x + x_offset, seg_y)
+                    .w_h(bar_width - 2.0, segment_height + 1.0)
+                    .color(srgba(
+                        (r * 255.0) as u8,
+                        (g * 255.0) as u8,
+                        (b * 255.0) as u8,
+                        combined_alpha,
+                    ));
+            }
         }
 
         // Draw scanlines
