@@ -106,29 +106,40 @@ fn view(app: &App, model: &Model, frame: Frame) {
     let queue = window.queue();
     let bounds = app.window_rect();
 
-    // Create draw context for visualization
-    // Note: Don't draw background - feedback shader handles it to preserve trails
-    let draw = app.draw();
-    model.renderer.draw(&draw, bounds);
+    // Create draw context for primary visualization
+    let primary_draw = app.draw();
+    model.renderer.draw_primary(&primary_draw, bounds);
 
-    // Render through feedback buffer and output to frame
+    // Create draw contexts for overlay visualizations
+    let overlay_count = model.renderer.overlay_count();
+    let overlay_draws: Vec<nannou::Draw> = (0..overlay_count).map(|_| app.draw()).collect();
+    let overlay_draw_refs: Vec<&nannou::Draw> = overlay_draws.iter().collect();
+    model.renderer.draw_overlays(&overlay_draw_refs, bounds);
+
+    // Render through feedback buffer with burn blending and output to frame
     {
         let mut feedback = model.feedback.borrow_mut();
-        feedback.render(
+        feedback.render_with_overlays(
             device,
             queue,
-            &draw,
+            &primary_draw,
+            &overlay_draw_refs,
             frame.texture_view(),
             Frame::TEXTURE_FORMAT,
             window.msaa_samples(),
         );
     }
 
+    // Draw notification overlay directly to frame (not through feedback)
+    let notification_draw = app.draw();
+    model.renderer.draw_notification(&notification_draw, bounds);
+    notification_draw.to_frame(app, &frame).unwrap();
+
     // Draw search overlay directly to frame (not through feedback)
     if model.output_capture.search_active {
-        let overlay_draw = app.draw();
-        draw_search_overlay(&overlay_draw, bounds, &model.output_capture);
-        overlay_draw.to_frame(app, &frame).unwrap();
+        let search_draw = app.draw();
+        draw_search_overlay(&search_draw, bounds, &model.output_capture);
+        search_draw.to_frame(app, &frame).unwrap();
     }
 }
 

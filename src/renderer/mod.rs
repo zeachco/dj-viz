@@ -74,6 +74,8 @@ const NOTIFICATION_FRAMES: u32 = 180; // ~3 seconds at 60fps
 pub struct Renderer {
     visualizations: Vec<Box<dyn Visualization>>,
     current_idx: usize,
+    /// Indices of overlay visualizations to blend with burn effect (0-3)
+    overlay_indices: Vec<usize>,
     cooldown: u32,
     notification_text: Option<String>,
     notification_frames: u32,
@@ -84,6 +86,7 @@ impl Renderer {
         Self {
             visualizations: vec![visualization],
             current_idx: 0,
+            overlay_indices: Vec::new(),
             cooldown: 0,
             notification_text: None,
             notification_frames: 0,
@@ -115,14 +118,46 @@ impl Renderer {
 
         let mut rng = rand::rng();
         let current_idx = rng.random_range(0..visualizations.len());
+        let overlay_indices = Self::select_overlays_for(current_idx, visualizations.len(), &mut rng);
 
         Self {
             visualizations,
             current_idx,
+            overlay_indices,
             cooldown: 0,
             notification_text: None,
             notification_frames: 0,
         }
+    }
+
+    /// Selects 0-3 random overlay visualization indices (excluding the primary)
+    fn select_overlays_for(primary_idx: usize, count: usize, rng: &mut impl rand::Rng) -> Vec<usize> {
+        if count <= 1 {
+            return Vec::new();
+        }
+
+        // Randomly choose 0-3 overlays
+        let num_overlays = rng.random_range(0..=3.min(count - 1));
+        let mut overlays = Vec::with_capacity(num_overlays);
+
+        while overlays.len() < num_overlays {
+            let idx = rng.random_range(0..count);
+            if idx != primary_idx && !overlays.contains(&idx) {
+                overlays.push(idx);
+            }
+        }
+
+        overlays
+    }
+
+    /// Selects new overlay visualizations for the current primary
+    fn select_overlays(&mut self) {
+        let mut rng = rand::rng();
+        self.overlay_indices = Self::select_overlays_for(
+            self.current_idx,
+            self.visualizations.len(),
+            &mut rng,
+        );
     }
 
     /// Shows a notification message for 3 seconds
@@ -135,8 +170,13 @@ impl Renderer {
     pub fn cycle_next(&mut self) {
         if self.visualizations.len() > 1 {
             self.current_idx = (self.current_idx + 1) % self.visualizations.len();
+            self.select_overlays();
             self.cooldown = COOLDOWN_FRAMES;
-            println!("Switched to visualization {}", self.current_idx);
+            println!(
+                "Switched to visualization {} with {} overlays",
+                self.current_idx,
+                self.overlay_indices.len()
+            );
         }
     }
 
@@ -163,19 +203,60 @@ impl Renderer {
                 }
             };
             self.current_idx = new_idx;
+            self.select_overlays();
             self.cooldown = COOLDOWN_FRAMES;
-            println!("Switched to visualization {}", self.current_idx);
+            println!(
+                "Switched to visualization {} with {} overlays",
+                self.current_idx,
+                self.overlay_indices.len()
+            );
         }
 
-        // Only update the active visualization (performance optimization)
+        // Update the active visualization
         self.visualizations[self.current_idx].update(analysis);
+
+        // Update overlay visualizations
+        for &idx in &self.overlay_indices {
+            self.visualizations[idx].update(analysis);
+        }
     }
 
+    /// Draw the primary visualization
+    pub fn draw_primary(&self, draw: &Draw, bounds: Rect) {
+        self.visualizations[self.current_idx].draw(draw, bounds);
+    }
+
+    /// Draw overlay visualizations (to be blended with burn effect)
+    pub fn draw_overlays(&self, draws: &[&Draw], bounds: Rect) {
+        for (i, &idx) in self.overlay_indices.iter().enumerate() {
+            if i < draws.len() {
+                self.visualizations[idx].draw(draws[i], bounds);
+            }
+        }
+    }
+
+    /// Returns the number of active overlays
+    pub fn overlay_count(&self) -> usize {
+        self.overlay_indices.len()
+    }
+
+    /// Legacy draw method for backwards compatibility (draws primary only)
     pub fn draw(&self, draw: &Draw, bounds: Rect) {
         // Note: Don't draw background - feedback shader clears to black and preserves trails
-        self.visualizations[self.current_idx].draw(draw, bounds);
+        self.draw_primary(draw, bounds);
 
         // Draw notification text at middle top
+        if let Some(ref text) = self.notification_text {
+            let alpha = (self.notification_frames as f32 / NOTIFICATION_FRAMES as f32).min(1.0);
+            draw.text(text)
+                .x_y(0.0, bounds.top() - 30.0)
+                .color(rgba(1.0, 1.0, 1.0, alpha))
+                .font_size(24);
+        }
+    }
+
+    /// Draw notification overlay (should be drawn after all visualizations)
+    pub fn draw_notification(&self, draw: &Draw, bounds: Rect) {
         if let Some(ref text) = self.notification_text {
             let alpha = (self.notification_frames as f32 / NOTIFICATION_FRAMES as f32).min(1.0);
             draw.text(text)

@@ -1,10 +1,13 @@
 //! Feedback buffer renderer for GPU-accelerated trail effects.
 //!
 //! Uses ping-pong textures and a fade/scale shader to create trails
-//! without re-rendering historical frames.
+//! without re-rendering historical frames. Supports burn-blending
+//! overlay visualizations on top.
 
 use nannou::prelude::*;
 use nannou::wgpu;
+
+const MAX_OVERLAYS: usize = 3;
 
 /// Vertex for fullscreen quad
 #[repr(C)]
@@ -49,6 +52,15 @@ pub struct FeedbackRenderer {
     fullscreen_quad: wgpu::Buffer,
     sampler: wgpu::Sampler,
     uniform_buffer: wgpu::Buffer,
+
+    // Overlay textures for burn blending
+    overlay_textures: Vec<wgpu::Texture>,
+    overlay_texture_views: Vec<wgpu::TextureView>,
+    overlay_draw_renderers: Vec<nannou::draw::Renderer>,
+
+    // Burn blend pipeline
+    burn_pipeline: wgpu::RenderPipeline,
+    burn_bind_group_layout: wgpu::BindGroupLayout,
 
     // For displaying result to screen
     reshaper: wgpu::TextureReshaper,
@@ -229,6 +241,111 @@ impl FeedbackRenderer {
             window_format,
         );
 
+        // Create overlay textures
+        let overlay_textures: Vec<wgpu::Texture> = (0..MAX_OVERLAYS)
+            .map(|_| Self::create_texture(device, size))
+            .collect();
+        let overlay_texture_views: Vec<wgpu::TextureView> = overlay_textures
+            .iter()
+            .map(|t| t.view().build())
+            .collect();
+        let overlay_draw_renderers: Vec<nannou::draw::Renderer> = overlay_textures
+            .iter()
+            .map(|t| {
+                nannou::draw::RendererBuilder::new()
+                    .build_from_texture_descriptor(device, t.descriptor())
+            })
+            .collect();
+
+        // Create burn blend shader and pipeline
+        let burn_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Burn Blend Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/burn_blend.wgsl").into()),
+        });
+
+        let burn_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Burn Blend Bind Group Layout"),
+                entries: &[
+                    // Base texture
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    // Overlay texture
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    // Sampler
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu_types::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
+        let burn_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Burn Blend Pipeline Layout"),
+            bind_group_layouts: &[&burn_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        let burn_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Burn Blend Pipeline"),
+            layout: Some(&burn_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &burn_shader,
+                entry_point: "vs_main",
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<FeedbackVertex>() as wgpu::BufferAddress,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &[
+                        wgpu::VertexAttribute {
+                            offset: 0,
+                            shader_location: 0,
+                            format: wgpu::VertexFormat::Float32x2,
+                        },
+                        wgpu::VertexAttribute {
+                            offset: 8,
+                            shader_location: 1,
+                            format: wgpu::VertexFormat::Float32x2,
+                        },
+                    ],
+                }],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &burn_shader,
+                entry_point: "fs_main",
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+        });
+
         Self {
             textures,
             texture_views,
@@ -240,6 +357,11 @@ impl FeedbackRenderer {
             fullscreen_quad,
             sampler,
             uniform_buffer,
+            overlay_textures,
+            overlay_texture_views,
+            overlay_draw_renderers,
+            burn_pipeline,
+            burn_bind_group_layout,
             reshaper,
             fade,
             scale,
@@ -405,6 +527,187 @@ impl FeedbackRenderer {
             window_format,
         );
 
+        // Recreate overlay textures
+        self.overlay_textures = (0..MAX_OVERLAYS)
+            .map(|_| Self::create_texture(device, size))
+            .collect();
+        self.overlay_texture_views = self
+            .overlay_textures
+            .iter()
+            .map(|t| t.view().build())
+            .collect();
+        self.overlay_draw_renderers = self
+            .overlay_textures
+            .iter()
+            .map(|t| {
+                nannou::draw::RendererBuilder::new()
+                    .build_from_texture_descriptor(device, t.descriptor())
+            })
+            .collect();
+
         self.current_idx = 0;
+    }
+
+    /// Create a bind group for burn blending two textures
+    fn create_burn_bind_group(
+        &self,
+        device: &wgpu::Device,
+        base_view: &wgpu::TextureView,
+        overlay_view: &wgpu::TextureView,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Burn Blend Bind Group"),
+            layout: &self.burn_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(base_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(overlay_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        })
+    }
+
+    /// Render a frame with feedback effect and overlay burn blending.
+    ///
+    /// # Arguments
+    /// * `device` - wgpu device
+    /// * `queue` - wgpu queue
+    /// * `primary_draw` - nannou Draw with primary visualization
+    /// * `overlay_draws` - nannou Draws with overlay visualizations (up to 3)
+    /// * `frame_view` - texture view of the output frame
+    /// * `frame_format` - format of the output frame
+    /// * `frame_sample_count` - MSAA sample count of the output frame
+    pub fn render_with_overlays(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        primary_draw: &nannou::Draw,
+        overlay_draws: &[&nannou::Draw],
+        frame_view: &wgpu::TextureView,
+        frame_format: wgpu::TextureFormat,
+        frame_sample_count: u32,
+    ) {
+        // Update uniforms in case fade/scale changed
+        self.update_uniforms(queue);
+
+        let prev_idx = self.current_idx;
+        let curr_idx = 1 - prev_idx;
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Feedback Encoder"),
+        });
+
+        // Pass 1: Render previous frame with fade/scale to current texture
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Feedback Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.texture_views[curr_idx],
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: true,
+                    },
+                })],
+                depth_stencil_attachment: None,
+            });
+
+            render_pass.set_pipeline(&self.fade_pipeline);
+            render_pass.set_bind_group(0, &self.bind_groups[prev_idx], &[]);
+            render_pass.set_vertex_buffer(0, self.fullscreen_quad.slice(..));
+            render_pass.draw(0..6, 0..1);
+        }
+
+        // Pass 2: Draw current primary visualization on top
+        self.draw_renderer
+            .render_to_texture(device, &mut encoder, primary_draw, &self.textures[curr_idx]);
+
+        // Pass 3: Render each overlay and blend onto the result using ping-pong
+        let num_overlays = overlay_draws.len().min(MAX_OVERLAYS);
+        let mut read_idx = curr_idx;
+        let mut write_idx = 1 - curr_idx;
+
+        for i in 0..num_overlays {
+            // Clear and render overlay to its texture
+            {
+                let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Overlay Clear Pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &self.overlay_texture_views[i],
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: true,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                });
+            }
+
+            self.overlay_draw_renderers[i].render_to_texture(
+                device,
+                &mut encoder,
+                overlay_draws[i],
+                &self.overlay_textures[i],
+            );
+
+            // Blend the overlay onto the current texture, output to the other texture
+            let blend_bind_group = self.create_burn_bind_group(
+                device,
+                &self.texture_views[read_idx],
+                &self.overlay_texture_views[i],
+            );
+
+            {
+                let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Blend Pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &self.texture_views[write_idx],
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: true,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                });
+
+                render_pass.set_pipeline(&self.burn_pipeline);
+                render_pass.set_bind_group(0, &blend_bind_group, &[]);
+                render_pass.set_vertex_buffer(0, self.fullscreen_quad.slice(..));
+                render_pass.draw(0..6, 0..1);
+            }
+
+            // Swap for next overlay
+            std::mem::swap(&mut read_idx, &mut write_idx);
+        }
+
+        // After overlays, read_idx contains the final result
+        // If no overlays, final result is still in curr_idx
+        let final_idx = if num_overlays > 0 { read_idx } else { curr_idx };
+
+        // Pass 4: Copy final feedback result to frame
+        let reshaper = wgpu::TextureReshaper::new(
+            device,
+            &self.texture_views[final_idx],
+            1,
+            wgpu::TextureSampleType::Float { filterable: true },
+            frame_sample_count,
+            frame_format,
+        );
+        reshaper.encode_render_pass(frame_view, &mut encoder);
+
+        queue.submit(Some(encoder.finish()));
+
+        // Set current_idx for next frame's feedback (should read from final result)
+        self.current_idx = final_idx;
     }
 }
