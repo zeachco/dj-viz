@@ -5,8 +5,10 @@
 
 pub mod black_hole;
 pub mod crt_phosphor;
+pub mod dancing_skeletons;
 pub mod debug;
 pub mod feedback;
+pub mod fractal_tree;
 pub mod gravity_flames;
 pub mod kaleidoscope;
 pub mod lava_blobs;
@@ -23,8 +25,10 @@ use crate::audio::AudioAnalysis;
 
 pub use black_hole::BlackHole;
 pub use crt_phosphor::CrtPhosphor;
+pub use dancing_skeletons::DancingSkeletons;
 pub use debug::DebugViz;
 pub use feedback::FeedbackRenderer;
+pub use fractal_tree::FractalTree;
 pub use gravity_flames::GravityFlames;
 pub use kaleidoscope::Kaleidoscope;
 pub use lava_blobs::LavaBlobs;
@@ -110,6 +114,8 @@ impl Renderer {
             Box::new(CrtPhosphor::new()),
             Box::new(BlackHole::new()),
             Box::new(GravityFlames::new()),
+            Box::new(FractalTree::new()),
+            Box::new(DancingSkeletons::new()),
         ];
 
         let mut rng = rand::rng();
@@ -171,8 +177,12 @@ impl Renderer {
     /// Selects new overlay visualizations for the current primary based on audio energy
     fn select_overlays(&mut self, energy: f32) {
         let mut rng = rand::rng();
-        self.overlay_indices =
-            Self::select_overlays_for(self.current_idx, self.visualizations.len(), energy, &mut rng);
+        self.overlay_indices = Self::select_overlays_for(
+            self.current_idx,
+            self.visualizations.len(),
+            energy,
+            &mut rng,
+        );
     }
 
     /// Shows a notification message for 3 seconds
@@ -231,6 +241,8 @@ impl Renderer {
             7 => "CrtPhosphor",
             8 => "BlackHole",
             9 => "GravityFlames",
+            10 => "FractalTree",
+            11 => "DancingSkeletons",
             _ => "Unknown",
         }
     }
@@ -265,7 +277,8 @@ impl Renderer {
 
             // Use combined energy metric: overall energy + treble (for hi-hats/cymbals) + bass (for kicks)
             // This makes rapid sounds (techno kicks, hi-hats) increase overlay count
-            let combined_energy = (analysis.energy * 0.5 + analysis.treble * 0.3 + analysis.bass * 0.2).min(1.0);
+            let combined_energy =
+                (analysis.energy * 0.5 + analysis.treble * 0.3 + analysis.bass * 0.2).min(1.0);
             self.select_overlays(combined_energy);
             self.cooldown = COOLDOWN_FRAMES;
             println!(
