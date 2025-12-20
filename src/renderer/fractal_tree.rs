@@ -122,17 +122,17 @@ impl FractalTree {
         let mut rng = rand::rng();
         let variation = rng.random_range(-0.1..0.1);
 
-        // Map bands to colors with 90% opacity
+        // Map bands to colors with 50% opacity
         match max_idx {
-            0 => rgba(0.9 + variation, 0.1, 0.1, 0.9),      // Sub-bass: Deep red
-            1 => rgba(1.0, 0.3 + variation, 0.0, 0.9),      // Bass: Orange
-            2 => rgba(1.0, 0.7 + variation, 0.0, 0.9),      // Low-mid: Yellow-orange
-            3 => rgba(0.9 + variation, 0.9, 0.2, 0.9),      // Mid: Yellow
-            4 => rgba(0.3 + variation, 0.9, 0.3, 0.9),      // Upper-mid: Green
-            5 => rgba(0.2, 0.7 + variation, 0.9, 0.9),      // Presence: Cyan
-            6 => rgba(0.3, 0.3, 0.9 + variation, 0.9),      // Brilliance: Blue
-            7 => rgba(0.7 + variation, 0.3, 0.9, 0.9),      // Air: Violet
-            _ => rgba(0.95, 0.92, 0.85, 0.9),               // Fallback: Eggshell
+            0 => rgba(0.9 + variation, 0.1, 0.1, 0.5),      // Sub-bass: Deep red
+            1 => rgba(1.0, 0.3 + variation, 0.0, 0.5),      // Bass: Orange
+            2 => rgba(1.0, 0.7 + variation, 0.0, 0.5),      // Low-mid: Yellow-orange
+            3 => rgba(0.9 + variation, 0.9, 0.2, 0.5),      // Mid: Yellow
+            4 => rgba(0.3 + variation, 0.9, 0.3, 0.5),      // Upper-mid: Green
+            5 => rgba(0.2, 0.7 + variation, 0.9, 0.5),      // Presence: Cyan
+            6 => rgba(0.3, 0.3, 0.9 + variation, 0.5),      // Brilliance: Blue
+            7 => rgba(0.7 + variation, 0.3, 0.9, 0.5),      // Air: Violet
+            _ => rgba(0.95, 0.92, 0.85, 0.5),               // Fallback: Eggshell
         }
     }
 
@@ -150,7 +150,7 @@ impl FractalTree {
         };
 
         // Start with one branch from random edge (default color)
-        tree.spawn_main_branch_with_color(rgba(0.95, 0.92, 0.85, 0.9));
+        tree.spawn_main_branch_with_color(rgba(0.95, 0.92, 0.85, 0.5));
 
         tree
     }
@@ -467,8 +467,9 @@ impl Visualization for FractalTree {
             // Track total length traveled
             branch.total_length += growth_speed;
 
-            // Gradually thin the branch
-            branch.thickness *= 0.998;
+            // Adjust thickness based on energy (expands with high energy, contracts otherwise)
+            let energy_multiplier = 1.0 + analysis.energy * 0.005; // Subtle thickness response to energy
+            branch.thickness *= 0.995 * energy_multiplier;
 
             branch.segments.push(Segment {
                 position: new_pos,

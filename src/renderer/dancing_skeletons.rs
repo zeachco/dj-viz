@@ -20,7 +20,9 @@
 //! - Dance style is randomly assigned at spawn
 //! - Animation speed is affected by energy_diff (higher energy = faster dancing)
 //! - Shuffle steps occur only on beat hits, creating rhythmic foot movements
-//! - Black outlines on white bones for clear visibility
+//! - Shuffle skeletons always move along screen edges (corner to adjacent corner)
+//! - Edge shufflers rotate to point feet toward the edge they're moving along
+//! - Hue-shifted outlines (90° shift) create complementary color pairs
 
 use super::Visualization;
 use nannou::prelude::*;
@@ -62,6 +64,7 @@ struct Skeleton {
     animation_phase: f32,
     has_smile: bool,
     bone_color: Rgb<u8>, // Color based on dominant frequency band at spawn
+    is_edge_shuffler: bool, // If true, shuffles along screen edges
     // Shuffle-specific state
     shuffle_step: i32, // Which foot is forward: -1 = left, 1 = right, 0 = center
     shuffle_transition: f32, // Smooth transition between steps (0.0 to 1.0)
@@ -69,7 +72,7 @@ struct Skeleton {
 }
 
 impl Skeleton {
-    fn new(position: Vec2, velocity: Vec2, scale: f32, dominant_band: usize) -> Self {
+    fn new(position: Vec2, velocity: Vec2, scale: f32, dominant_band: usize, rotation: f32, is_edge_shuffler: bool) -> Self {
         let mut rng = rand::rng();
 
         // Random HP as power of 4: 4^1=4, 4^2=16, 4^3=64, 4^4=256
@@ -84,9 +87,6 @@ impl Skeleton {
             3 => DanceStyle::Shuffle,
             _ => DanceStyle::ShuffleMirrored,
         };
-
-        // Random rotation angle (-30 to 30 degrees)
-        let rotation = rng.random_range(-30.0_f32..30.0_f32).to_radians();
 
         // 50% chance to have a smile
         let has_smile = rng.random();
@@ -104,6 +104,7 @@ impl Skeleton {
             animation_phase: rng.random_range(0.0..std::f32::consts::TAU),
             has_smile,
             bone_color,
+            is_edge_shuffler,
             shuffle_step: 0,
             shuffle_transition: 1.0,
             shuffle_cooldown: 0,
@@ -242,8 +243,16 @@ impl Skeleton {
     }
 
     fn is_in_bounds(&self, bounds: Rect) -> bool {
-        // Check if skeleton is still visible with margin based on its size
-        let margin = BASE_EDGE_OFFSET + (SKELETON_HEIGHT_FACTOR * self.scale);
+        // Edge shufflers need much larger margin since they move along corners
+        let margin = if self.is_edge_shuffler {
+            // Need to account for full diagonal distance from corner
+            let half_width = SPAWN_AREA_WIDTH / 2.0;
+            let half_height = SPAWN_AREA_HEIGHT / 2.0;
+            (half_width + half_height) // Large enough to contain corner-to-corner movement
+        } else {
+            BASE_EDGE_OFFSET + (SKELETON_HEIGHT_FACTOR * self.scale)
+        };
+
         self.position.x > bounds.left() - margin
             && self.position.x < bounds.right() + margin
             && self.position.y > bounds.bottom() - margin
@@ -1037,12 +1046,30 @@ impl DancingSkeletons {
         // Calculate offset based on skeleton height to ensure it starts fully outside viewport
         let skeleton_offset = BASE_EDGE_OFFSET + (SKELETON_HEIGHT_FACTOR * scale);
 
-        // Get crossing path (start outside viewport, end outside on opposite side)
-        let (start_pos, end_pos) =
-            get_crossing_path(SPAWN_AREA_WIDTH, SPAWN_AREA_HEIGHT, skeleton_offset);
+        // Determine dance style first (needed for edge shuffle decision)
+        let dance_style = match rng.random_range(0..5) {
+            0 => DanceStyle::JumpingJacks,
+            1 => DanceStyle::JumpingJacksOverhead,
+            2 => DanceStyle::Dougie,
+            3 => DanceStyle::Shuffle,
+            _ => DanceStyle::ShuffleMirrored,
+        };
+
+        // Check if this is a shuffle dance that should go along edges (always true for shuffles)
+        let is_shuffle = matches!(dance_style, DanceStyle::Shuffle | DanceStyle::ShuffleMirrored);
+        let is_edge_shuffler = is_shuffle;
+
+        let (start_pos, end_pos, rotation) = if is_edge_shuffler {
+            self.calculate_edge_shuffle_path(skeleton_offset, &mut rng)
+        } else {
+            // Normal crossing path through center
+            let (start, end) = get_crossing_path(SPAWN_AREA_WIDTH, SPAWN_AREA_HEIGHT, skeleton_offset);
+            // Random rotation for non-edge skeletons
+            let rot = rng.random_range(-30.0_f32..30.0_f32).to_radians();
+            (start, end, rot)
+        };
 
         // Calculate velocity to cross from start to end
-        // We want the skeleton to take a reasonable time to cross (e.g., 5-10 seconds at 60fps = 300-600 frames)
         let crossing_distance = start_pos.distance(end_pos);
         let crossing_frames = rng.random_range(300.0..600.0); // Random crossing time
         let speed = crossing_distance / crossing_frames;
@@ -1058,8 +1085,57 @@ impl DancingSkeletons {
             .map(|(idx, _)| idx)
             .unwrap_or(0);
 
-        self.skeletons
-            .push(Skeleton::new(start_pos, velocity, scale, dominant_band));
+        // Create skeleton with calculated dance style and edge behavior
+        let mut skeleton = Skeleton::new(start_pos, velocity, scale, dominant_band, rotation, is_edge_shuffler);
+        skeleton.dance_style = dance_style; // Override with pre-determined dance style
+        self.skeletons.push(skeleton);
+    }
+
+    /// Calculates corner-to-corner edge path for edge shufflers
+    fn calculate_edge_shuffle_path(&self, offset: f32, rng: &mut impl rand::Rng) -> (Vec2, Vec2, f32) {
+        let half_width = SPAWN_AREA_WIDTH / 2.0;
+        let half_height = SPAWN_AREA_HEIGHT / 2.0;
+
+        // Pick a random corner to start from (0=TL, 1=TR, 2=BL, 3=BR)
+        let start_corner = rng.random_range(0..4);
+
+        // Pick one of two adjacent corners (not diagonal)
+        let end_corner = match start_corner {
+            0 => if rng.random() { 1 } else { 2 }, // Top-left -> Top-right or Bottom-left
+            1 => if rng.random() { 0 } else { 3 }, // Top-right -> Top-left or Bottom-right
+            2 => if rng.random() { 0 } else { 3 }, // Bottom-left -> Top-left or Bottom-right
+            _ => if rng.random() { 1 } else { 2 }, // Bottom-right -> Top-right or Bottom-left
+        };
+
+        // Convert corner indices to positions (with offset applied outward)
+        let get_corner_pos = |corner: i32| -> Vec2 {
+            match corner {
+                0 => vec2(-half_width - offset, half_height + offset),   // Top-left
+                1 => vec2(half_width + offset, half_height + offset),    // Top-right
+                2 => vec2(-half_width - offset, -half_height - offset),  // Bottom-left
+                _ => vec2(half_width + offset, -half_height - offset),   // Bottom-right
+            }
+        };
+
+        let start_pos = get_corner_pos(start_corner);
+        let end_pos = get_corner_pos(end_corner);
+
+        // Determine which edge we're shuffling along and set rotation
+        let rotation = if start_corner == 0 && end_corner == 1 || start_corner == 1 && end_corner == 0 {
+            // Top edge (left-right): feet point up (180°)
+            std::f32::consts::PI
+        } else if start_corner == 2 && end_corner == 3 || start_corner == 3 && end_corner == 2 {
+            // Bottom edge (left-right): feet point down (0°)
+            0.0
+        } else if start_corner == 0 && end_corner == 2 || start_corner == 2 && end_corner == 0 {
+            // Left edge (up-down): feet point left (-90°)
+            -std::f32::consts::FRAC_PI_2
+        } else {
+            // Right edge (up-down): feet point right (90°)
+            std::f32::consts::FRAC_PI_2
+        };
+
+        (start_pos, end_pos, rotation)
     }
 }
 
