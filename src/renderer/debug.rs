@@ -30,6 +30,9 @@ pub struct DebugViz {
     display_transition: bool,
     display_zoom_shift: bool,
     display_bpm: f32,
+    display_dominant_band: usize,
+    display_last_mark: u32,
+    display_viz_change: bool,
     /// Tracked min values for each band (for visualization)
     display_band_mins: [f32; 8],
     /// Tracked max values for each band (for visualization)
@@ -56,6 +59,9 @@ impl DebugViz {
             display_transition: false,
             display_zoom_shift: false,
             display_bpm: 0.0,
+            display_dominant_band: 0,
+            display_last_mark: 600,
+            display_viz_change: false,
             display_band_mins: [0.0; 8],
             display_band_maxs: [0.0; 8],
             glow_intensity: 0.5,
@@ -168,6 +174,9 @@ impl Visualization for DebugViz {
             self.display_transition = analysis.transition_detected;
             self.display_zoom_shift = analysis.zoom_direction_shift;
             self.display_bpm = analysis.bpm;
+            self.display_dominant_band = analysis.dominant_band;
+            self.display_last_mark = analysis.last_mark;
+            self.display_viz_change = analysis.viz_change_triggered;
         }
 
         // Update tracked min/max for each band with slow decay towards current value
@@ -313,6 +322,31 @@ impl Visualization for DebugViz {
             col3_x,
             start_y - row_spacing * 4.0,
             None, // No indicator for BPM
+        ));
+        text_data.push((
+            "Dominant Band".to_string(),
+            format!("{}", self.display_dominant_band),
+            col3_x,
+            start_y - row_spacing * 5.0,
+            None, // No indicator for dominant band
+        ));
+        text_data.push((
+            "Last Mark".to_string(),
+            format!("{}", self.display_last_mark),
+            col3_x,
+            start_y - row_spacing * 6.0,
+            None, // No indicator for last mark
+        ));
+        text_data.push((
+            "Viz Change".to_string(),
+            if self.display_viz_change {
+                "TRUE".to_string()
+            } else {
+                "FALSE".to_string()
+            },
+            col3_x,
+            start_y - row_spacing * 7.0,
+            None, // Boolean, no indicator
         ));
 
         // Draw main text with value-based colors

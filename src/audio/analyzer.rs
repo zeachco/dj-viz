@@ -41,6 +41,12 @@ pub struct AudioAnalysis {
     pub zoom_direction_shift: bool,
     /// Estimated tempo in beats per minute (smoothed)
     pub bpm: f32,
+    /// Index of the dominant frequency band (0-7, updated max once per second)
+    pub dominant_band: usize,
+    /// Steps (frames) since last drastic band change (resets on major energy shift)
+    pub last_mark: u32,
+    /// Whether a visualization change should be triggered (drastic change + high energy)
+    pub viz_change_triggered: bool,
 }
 
 impl Default for AudioAnalysis {
@@ -55,6 +61,9 @@ impl Default for AudioAnalysis {
             energy_diff: 0.0,
             zoom_direction_shift: false,
             bpm: 0.0,
+            dominant_band: 0,
+            last_mark: 600, // Start at max (10 seconds at 60fps)
+            viz_change_triggered: false,
         }
     }
 }
@@ -96,6 +105,14 @@ pub struct AudioAnalyzer {
     last_beat_time: f32,  // Last detected beat time
     smoothed_bpm: f32,    // Smoothed BPM estimate
     frame_time: f32,      // Accumulated time for timestamping
+
+    // Dominant band detection
+    dominant_band: usize,           // Current dominant band index
+    last_dominant_update_time: f32, // Last time dominant band was updated
+
+    // Drastic band change detection (last_mark)
+    last_mark: u32,                        // Frames since last drastic change
+    reference_bands: [f32; NUM_BANDS],     // Reference bands for comparison
 
     // Frame skipping for performance
     frame_count: u32,
@@ -150,6 +167,10 @@ impl AudioAnalyzer {
             last_beat_time: 0.0,
             smoothed_bpm: 0.0,
             frame_time: 0.0,
+            dominant_band: 0,
+            last_dominant_update_time: 0.0,
+            last_mark: 600, // Start at max (10 seconds at 60fps)
+            reference_bands: [0.0; NUM_BANDS],
             frame_count: 0,
             last_analysis: AudioAnalysis::default(),
         }
@@ -255,14 +276,6 @@ impl AudioAnalyzer {
         // Compute energy difference (positive = rising energy, negative = falling)
         let energy_diff = self.smoothed_energy - self.lagged_energy;
 
-        // Detect zoom direction shift when energy_diff crosses ±0.15 threshold
-        const ZOOM_THRESHOLD: f32 = 0.15;
-        let zoom_direction_shift = (self.prev_energy_diff < ZOOM_THRESHOLD
-            && energy_diff >= ZOOM_THRESHOLD)
-            || (self.prev_energy_diff > -ZOOM_THRESHOLD && energy_diff <= -ZOOM_THRESHOLD)
-            || (self.prev_energy_diff >= ZOOM_THRESHOLD && energy_diff < ZOOM_THRESHOLD)
-            || (self.prev_energy_diff <= -ZOOM_THRESHOLD && energy_diff > -ZOOM_THRESHOLD);
-
         self.prev_energy_diff = energy_diff;
         self.prev_bands = bands_raw;
 
@@ -309,6 +322,56 @@ impl AudioAnalyzer {
             }
         }
 
+        // Update dominant band (max once per second)
+        const DOMINANT_UPDATE_INTERVAL: f32 = 1.0; // 1 second
+        if self.frame_time - self.last_dominant_update_time >= DOMINANT_UPDATE_INTERVAL {
+            // Find the band with the highest smoothed energy
+            let mut max_band = 0;
+            let mut max_energy = self.smoothed_bands[0];
+            for i in 1..NUM_BANDS {
+                if self.smoothed_bands[i] > max_energy {
+                    max_energy = self.smoothed_bands[i];
+                    max_band = i;
+                }
+            }
+            self.dominant_band = max_band;
+            self.last_dominant_update_time = self.frame_time;
+        }
+
+        // Detect drastic band changes with adaptive threshold
+        const MAX_MARK_STEPS: u32 = 600; // 10 seconds at 60fps
+        const MIN_DIVISOR: f32 = 1.0; // Minimum divisor to keep threshold activatable
+        const MAX_DIVISOR: f32 = 60.0; // Maximum divisor (at 600 steps -> 600/60 = 10x easier)
+        const BASE_THRESHOLD: f32 = 2.0; // Base threshold for detecting drastic change
+        const MIN_THRESHOLD: f32 = 0.15; // Minimum threshold to ensure effort is required
+
+        // Increment last_mark (capped at MAX_MARK_STEPS)
+        self.last_mark = (self.last_mark + 1).min(MAX_MARK_STEPS);
+
+        // Calculate adaptive threshold: gets easier over time but stays above minimum
+        let divisor = (self.last_mark as f32 / 10.0).clamp(MIN_DIVISOR, MAX_DIVISOR);
+        let adaptive_threshold = (BASE_THRESHOLD / divisor).max(MIN_THRESHOLD);
+
+        // Detect drastic change by comparing current smoothed bands to reference bands
+        let mut max_band_change = 0.0f32;
+        for i in 0..NUM_BANDS {
+            let change = (self.smoothed_bands[i] - self.reference_bands[i]).abs();
+            max_band_change = max_band_change.max(change);
+        }
+
+        // If drastic change detected, reset last_mark and update reference
+        if max_band_change >= adaptive_threshold {
+            self.last_mark = 1;
+            self.reference_bands = self.smoothed_bands;
+        }
+
+        // Zoom direction shift only happens when last_mark is 1 (drastic change just occurred)
+        let zoom_direction_shift = self.last_mark == 1;
+
+        // Visualization change triggers when zoom shift happens with high energy
+        const VIZ_CHANGE_ENERGY_THRESHOLD: f32 = 0.95;
+        let viz_change_triggered = zoom_direction_shift && self.smoothed_energy >= VIZ_CHANGE_ENERGY_THRESHOLD;
+
         // Compute aggregate values
         let bass = (self.smoothed_bands[0] + self.smoothed_bands[1]) / 2.0;
         let mids = (self.smoothed_bands[2] + self.smoothed_bands[3] + self.smoothed_bands[4]) / 3.0;
@@ -325,6 +388,9 @@ impl AudioAnalyzer {
             energy_diff,
             zoom_direction_shift,
             bpm: self.smoothed_bpm,
+            dominant_band: self.dominant_band,
+            last_mark: self.last_mark,
+            viz_change_triggered,
         };
 
         self.last_analysis.clone()
