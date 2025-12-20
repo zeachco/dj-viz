@@ -39,10 +39,6 @@ pub struct AudioAnalysis {
     pub energy_diff: f32,
     /// Whether zoom direction should shift (triggered when energy_diff crosses ±0.15)
     pub zoom_direction_shift: bool,
-    /// Tracked minimum values for each band (for normalization)
-    pub band_mins: [f32; NUM_BANDS],
-    /// Tracked maximum values for each band (for normalization)
-    pub band_maxs: [f32; NUM_BANDS],
     /// Estimated tempo in beats per minute (smoothed)
     pub bpm: f32,
 }
@@ -58,8 +54,6 @@ impl Default for AudioAnalysis {
             treble: 0.0,
             energy_diff: 0.0,
             zoom_direction_shift: false,
-            band_mins: [0.0; NUM_BANDS],
-            band_maxs: [0.0; NUM_BANDS],
             bpm: 0.0,
         }
     }
@@ -330,8 +324,6 @@ impl AudioAnalyzer {
             treble,
             energy_diff,
             zoom_direction_shift,
-            band_mins: self.band_mins,
-            band_maxs: self.band_maxs,
             bpm: self.smoothed_bpm,
         };
 

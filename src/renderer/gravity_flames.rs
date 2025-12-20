@@ -96,12 +96,7 @@ impl GravityFlames {
             (0.4 + t * 0.4, t * 0.1, 0.0)
         };
 
-        srgba(
-            (r * 255.0) as u8,
-            (g * 255.0) as u8,
-            (b * 255.0) as u8,
-            255,
-        )
+        srgba((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8, 255)
     }
 
     /// Spawn a new particle
@@ -207,8 +202,7 @@ impl Visualization for GravityFlames {
             let y = center.y + particle.position.y;
 
             // Skip if outside bounds (optimization)
-            if x < bounds.left() || x > bounds.right() || y < bounds.bottom() || y > bounds.top()
-            {
+            if x < bounds.left() || x > bounds.right() || y < bounds.bottom() || y > bounds.top() {
                 continue;
             }
 
@@ -226,10 +220,7 @@ impl Visualization for GravityFlames {
                 let glow_alpha = ((alpha as f32) * (1.0 - t) * 0.25) as u8;
                 let glow_color = srgba(color.red, color.green, color.blue, glow_alpha);
 
-                draw.ellipse()
-                    .x_y(x, y)
-                    .radius(glow_size)
-                    .color(glow_color);
+                draw.ellipse().x_y(x, y).radius(glow_size).color(glow_color);
             }
 
             // Draw core particle

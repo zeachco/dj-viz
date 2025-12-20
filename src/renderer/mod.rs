@@ -57,8 +57,8 @@ pub struct Resolution {
 impl Resolution {
     pub fn debug() -> Self {
         Self {
-            width: 400,
-            height: 300,
+            width: 640,
+            height: 480,
             fullscreen: false,
         }
     }

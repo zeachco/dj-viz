@@ -63,6 +63,12 @@ fn model(app: &App) -> Model {
     let size = window.inner_size_pixels();
     let sample_count = window.msaa_samples();
 
+    // Log actual window size vs requested size
+    println!(
+        "Window size: {}x{} (requested: {}x{})",
+        size.0, size.1, resolution.width, resolution.height
+    );
+
     // Create feedback renderer
     let feedback = FeedbackRenderer::new(
         device,
@@ -79,7 +85,7 @@ fn model(app: &App) -> Model {
         None
     };
 
-    Model {
+    let mut model = Model {
         source: SourcePipe::new(),
         analyzer: AudioAnalyzer::new(),
         renderer: Renderer::with_cycling(),
@@ -88,7 +94,15 @@ fn model(app: &App) -> Model {
         screensaver_inhibitor,
         phase_offset: 0.0,
         prev_energy: 0.0,
+    };
+
+    // Ensure feedback renderer is properly sized to actual window dimensions
+    // This handles cases where OS window manager resizes the window
+    if size.0 != resolution.width || size.1 != resolution.height {
+        resized(app, &mut model, vec2(size.0 as f32, size.1 as f32));
     }
+
+    model
 }
 
 fn update(app: &App, model: &mut Model, _update: Update) {
@@ -99,8 +113,10 @@ fn update(app: &App, model: &mut Model, _update: Update) {
 
     // Debug: print energy every second
     if app.elapsed_frames().is_multiple_of(60) {
-        println!("Energy: {:.2} | Bass: {:.2} | Mids: {:.2} | Treble: {:.2}",
-            analysis.energy, analysis.bass, analysis.mids, analysis.treble);
+        println!(
+            "Energy: {:.2} | Bass: {:.2} | Mids: {:.2} | Treble: {:.2}",
+            analysis.energy, analysis.bass, analysis.mids, analysis.treble
+        );
     }
 
     model.renderer.update(&analysis);
@@ -117,7 +133,7 @@ fn update(app: &App, model: &mut Model, _update: Update) {
         // Sine wave oscillation over 30 seconds: zooms in and out
         let phase = app.time * std::f32::consts::TAU / 30.0 + model.phase_offset;
         let direction = phase.sin(); // -1 to 1
-        // Base zoom follows sine wave
+                                     // Base zoom follows sine wave
         let base_offset = 0.006 * direction;
         // Bass amplifies the current direction (zoom in faster or out faster)
         let bass_boost = analysis.bass * 0.012 * direction;
@@ -351,7 +367,9 @@ fn key_pressed(app: &App, model: &mut Model, key: Key) {
 
     if let Some(idx) = index {
         if let Some(name) = model.renderer.set_visualization(idx) {
-            model.renderer.show_notification(format!("[{}] {}", idx, name));
+            model
+                .renderer
+                .show_notification(format!("[{}] {}", idx, name));
         }
     }
 }
