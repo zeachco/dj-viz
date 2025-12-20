@@ -163,11 +163,11 @@ impl Visualization for Kaleidoscope {
         for particle in &self.particles {
             let hue = (particle.hue + self.hue_offset) % 360.0;
             let saturation = 0.7 + self.treble * 0.3;
-            let value = 0.6 + particle.radius * 0.4;
-            let alpha = 0.3 + self.bass * 0.4;
+            let value = 0.5 + particle.radius * 0.3;
+            let alpha = 0.2 + self.bass * 0.25;
 
             let color = Self::hsv_to_rgba(hue, saturation, value, alpha);
-            let particle_size = 12.0 + particle.size * 20.0 * (1.0 + self.bass * 0.5);
+            let particle_size = 10.0 + particle.size * 15.0 * (1.0 + self.bass * 0.3);
             let r = particle.radius * max_radius;
 
             // Draw in each segment (mirrored)
@@ -234,12 +234,12 @@ impl Visualization for Kaleidoscope {
         }
 
         // Center mandala glow
-        let glow_radius = max_radius * 0.15 * (1.0 + self.bass * 0.5);
-        for i in 0..10 {
-            let t = i as f32 / 10.0;
+        let glow_radius = max_radius * 0.12 * (1.0 + self.bass * 0.3);
+        for i in 0..7 {
+            let t = i as f32 / 7.0;
             let r = glow_radius * (1.0 - t);
             let hue = (self.hue_offset + t * 60.0) % 360.0;
-            let alpha = t * 0.3 * (0.5 + self.bass * 0.5);
+            let alpha = t * 0.2 * (0.5 + self.bass * 0.3);
             let color = Self::hsv_to_rgba(hue, 0.6, 0.9, alpha);
 
             draw.ellipse().xy(center).radius(r).color(color);

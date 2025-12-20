@@ -217,13 +217,13 @@ impl Visualization for GravityFlames {
 
             // Calculate alpha based on age
             let age_factor = particle.age / PARTICLE_MAX_AGE;
-            let alpha = ((1.0 - age_factor).max(0.0) * 0.8 * 255.0) as u8;
+            let alpha = ((1.0 - age_factor).max(0.0) * 0.5 * 255.0) as u8;
 
-            // Draw glow (3 rings for bloom effect)
-            for i in 0..3 {
-                let t = i as f32 / 3.0;
-                let glow_size = particle.size * (2.0 + t * 2.0);
-                let glow_alpha = ((alpha as f32) * (1.0 - t) * 0.4) as u8;
+            // Draw glow (2 rings for bloom effect)
+            for i in 0..2 {
+                let t = i as f32 / 2.0;
+                let glow_size = particle.size * (1.5 + t * 1.5);
+                let glow_alpha = ((alpha as f32) * (1.0 - t) * 0.25) as u8;
                 let glow_color = srgba(color.red, color.green, color.blue, glow_alpha);
 
                 draw.ellipse()
@@ -241,7 +241,7 @@ impl Visualization for GravityFlames {
         }
 
         // Optional: Draw center point indicator (subtle pulsing)
-        let pulse = ((self.frame_count as f32 * 0.1).sin() * 0.5 + 0.5) * 0.3;
+        let pulse = ((self.frame_count as f32 * 0.1).sin() * 0.5 + 0.5) * 0.15;
         let center_alpha = (pulse * 255.0) as u8;
         draw.ellipse()
             .x_y(center.x, center.y)
