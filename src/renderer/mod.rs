@@ -2,6 +2,7 @@ pub mod feedback;
 pub mod solar_beat;
 pub mod spectrogram;
 pub mod squares;
+pub mod tesla_coil;
 
 use nannou::prelude::*;
 use rand::Rng;
@@ -12,6 +13,7 @@ pub use feedback::FeedbackRenderer;
 pub use solar_beat::SolarBeat;
 pub use spectrogram::Spectrogram;
 pub use squares::Squares;
+pub use tesla_coil::TeslaCoil;
 
 /// Trait that all visualizations must implement
 pub trait Visualization {
@@ -93,6 +95,7 @@ impl Renderer {
             Box::new(SolarBeat::new()),
             Box::new(Spectrogram::new()),
             Box::new(Squares::new()),
+            Box::new(TeslaCoil::new()),
         ];
 
         let mut rng = rand::rng();
