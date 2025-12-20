@@ -37,6 +37,10 @@ pub struct DebugViz {
     display_energy: f32,
     display_energy_diff: f32,
     display_transition: bool,
+    /// Tracked min values for each band (for visualization)
+    display_band_mins: [f32; 8],
+    /// Tracked max values for each band (for visualization)
+    display_band_maxs: [f32; 8],
     /// Scanline offset for subtle animation
     scanline_offset: f32,
     /// Phosphor glow intensity
@@ -55,6 +59,8 @@ impl DebugViz {
             display_energy: 0.0,
             display_energy_diff: 0.0,
             display_transition: false,
+            display_band_mins: [0.0; 8],
+            display_band_maxs: [0.0; 8],
             scanline_offset: 0.0,
             glow_intensity: 0.5,
         }
@@ -160,6 +166,28 @@ impl Visualization for DebugViz {
             self.display_energy = analysis.energy;
             self.display_energy_diff = analysis.energy_diff;
             self.display_transition = analysis.transition_detected;
+        }
+
+        // Update tracked min/max for each band with slow decay towards current value
+        const MIN_TRACK_RATE: f32 = 0.995; // Very slow tracking
+        const MAX_TRACK_RATE: f32 = 0.995;
+
+        for i in 0..8 {
+            let current = analysis.bands[i];
+
+            // Track minimum - if current is lower, use it; otherwise slowly drift towards current
+            if current < self.display_band_mins[i] || self.display_band_mins[i] == 0.0 {
+                self.display_band_mins[i] = current;
+            } else {
+                self.display_band_mins[i] = self.display_band_mins[i] * MIN_TRACK_RATE + current * (1.0 - MIN_TRACK_RATE);
+            }
+
+            // Track maximum - if current is higher, use it; otherwise slowly drift towards current
+            if current > self.display_band_maxs[i] {
+                self.display_band_maxs[i] = current;
+            } else {
+                self.display_band_maxs[i] = self.display_band_maxs[i] * MAX_TRACK_RATE + current * (1.0 - MAX_TRACK_RATE);
+            }
         }
 
         // Smooth glow intensity
@@ -351,7 +379,7 @@ impl Visualization for DebugViz {
         }
 
         // Draw debug indicator lines below numeric values
-        for (_, _, x, y, numeric_value) in &text_data {
+        for (idx, (_, _, x, y, numeric_value)) in text_data.iter().enumerate() {
             if let Some(value) = numeric_value {
                 let clamped_value = value.clamp(0.0, 1.0);
                 let line_length = clamped_value * indicator_width;
@@ -372,22 +400,28 @@ impl Visualization for DebugViz {
                     .weight(2.5)
                     .color(line_color);
 
-                // Draw calibration threshold markers
-                // 0.8 threshold (yellow/red transition zone)
-                let marker_0_8_x = *x - indicator_width / 2.0 + 0.8 * indicator_width;
-                draw.line()
-                    .start(pt2(marker_0_8_x, line_y - 4.0))
-                    .end(pt2(marker_0_8_x, line_y + 4.0))
-                    .weight(1.5)
-                    .color(srgba(200u8, 180u8, 0u8, 180u8)); // Yellow marker
+                // Draw tracked min/max markers for frequency bands (first 8 entries)
+                if idx < 8 {
+                    let band_idx = idx;
 
-                // 0.98 threshold (saturation warning zone)
-                let marker_0_98_x = *x - indicator_width / 2.0 + 0.98 * indicator_width;
-                draw.line()
-                    .start(pt2(marker_0_98_x, line_y - 4.0))
-                    .end(pt2(marker_0_98_x, line_y + 4.0))
-                    .weight(1.5)
-                    .color(srgba(220u8, 50u8, 50u8, 200u8)); // Red marker
+                    // Yellow marker for tracked minimum
+                    let min_val = self.display_band_mins[band_idx].clamp(0.0, 1.0);
+                    let marker_min_x = *x - indicator_width / 2.0 + min_val * indicator_width;
+                    draw.line()
+                        .start(pt2(marker_min_x, line_y - 4.0))
+                        .end(pt2(marker_min_x, line_y + 4.0))
+                        .weight(1.5)
+                        .color(srgba(200u8, 180u8, 0u8, 180u8)); // Yellow marker
+
+                    // Red marker for tracked maximum
+                    let max_val = self.display_band_maxs[band_idx].clamp(0.0, 1.0);
+                    let marker_max_x = *x - indicator_width / 2.0 + max_val * indicator_width;
+                    draw.line()
+                        .start(pt2(marker_max_x, line_y - 4.0))
+                        .end(pt2(marker_max_x, line_y + 4.0))
+                        .weight(1.5)
+                        .color(srgba(220u8, 50u8, 50u8, 200u8)); // Red marker
+                }
             }
         }
 
