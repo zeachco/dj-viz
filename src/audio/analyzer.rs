@@ -46,6 +46,8 @@ pub struct AudioAnalysis {
     pub mids: f32,
     /// Treble energy (bands 5-7 combined)
     pub treble: f32,
+    /// Difference between current energy and lagged energy (can be negative)
+    pub energy_diff: f32,
 }
 
 impl Default for AudioAnalysis {
@@ -57,6 +59,7 @@ impl Default for AudioAnalysis {
             bass: 0.0,
             mids: 0.0,
             treble: 0.0,
+            energy_diff: 0.0,
         }
     }
 }
@@ -74,6 +77,7 @@ pub struct AudioAnalyzer {
     // Smoothed values
     smoothed_bands: [f32; NUM_BANDS],
     smoothed_energy: f32,
+    lagged_energy: f32,
 
     // Transition detection state
     energy_history: Vec<f32>,
@@ -129,6 +133,7 @@ impl AudioAnalyzer {
             band_bins,
             smoothed_bands: [0.0; NUM_BANDS],
             smoothed_energy: 0.0,
+            lagged_energy: 0.0,
             energy_history: vec![0.0; HISTORY_SIZE],
             freq_ratio_history: vec![0.0; HISTORY_SIZE],
             history_idx: 0,
@@ -213,13 +218,19 @@ impl AudioAnalyzer {
             }
         }
 
-        // Calculate overall energy
-        let energy_raw: f32 = bands_raw.iter().sum::<f32>() / NUM_BANDS as f32;
+        // Calculate overall energy (use max band value instead of average)
+        let energy_raw: f32 = bands_raw.iter().cloned().fold(0.0f32, f32::max);
         if energy_raw > self.smoothed_energy {
             self.smoothed_energy = self.smoothed_energy * 0.3 + energy_raw * 0.7;
         } else {
             self.smoothed_energy = self.smoothed_energy * 0.9 + energy_raw * 0.1;
         }
+
+        // Update lagged energy with much slower smoothing (creates lag effect)
+        self.lagged_energy = self.lagged_energy * 0.95 + self.smoothed_energy * 0.05;
+
+        // Compute energy difference (positive = rising energy, negative = falling)
+        let energy_diff = self.smoothed_energy - self.lagged_energy;
 
         self.prev_bands = bands_raw;
 
@@ -238,6 +249,7 @@ impl AudioAnalyzer {
             bass,
             mids,
             treble,
+            energy_diff,
         };
 
         self.last_analysis.clone()

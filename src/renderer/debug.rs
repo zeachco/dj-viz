@@ -35,6 +35,7 @@ pub struct DebugViz {
     display_mids: f32,
     display_treble: f32,
     display_energy: f32,
+    display_energy_diff: f32,
     display_transition: bool,
     /// Scanline offset for subtle animation
     scanline_offset: f32,
@@ -52,6 +53,7 @@ impl DebugViz {
             display_mids: 0.0,
             display_treble: 0.0,
             display_energy: 0.0,
+            display_energy_diff: 0.0,
             display_transition: false,
             scanline_offset: 0.0,
             glow_intensity: 0.5,
@@ -156,6 +158,7 @@ impl Visualization for DebugViz {
             self.display_mids = analysis.mids;
             self.display_treble = analysis.treble;
             self.display_energy = analysis.energy;
+            self.display_energy_diff = analysis.energy_diff;
             self.display_transition = analysis.transition_detected;
         }
 
@@ -220,7 +223,7 @@ impl Visualization for DebugViz {
             Some(self.display_treble),
         ));
 
-        // Column 3: Energy/Transition
+        // Column 3: Energy/Energy Diff/Transition
         let col3_x = center.x + column_spacing;
         text_data.push((
             "Energy".to_string(),
@@ -230,6 +233,13 @@ impl Visualization for DebugViz {
             Some(self.display_energy),
         ));
         text_data.push((
+            "Energy Diff".to_string(),
+            Self::format_value(self.display_energy_diff),
+            col3_x,
+            start_y - row_spacing,
+            Some(self.display_energy_diff.abs()), // Use absolute value for visualization
+        ));
+        text_data.push((
             "Transition".to_string(),
             if self.display_transition {
                 "TRUE".to_string()
@@ -237,7 +247,7 @@ impl Visualization for DebugViz {
                 "FALSE".to_string()
             },
             col3_x,
-            start_y - row_spacing,
+            start_y - row_spacing * 2.0,
             None, // Boolean, no indicator
         ));
 
@@ -345,7 +355,7 @@ impl Visualization for DebugViz {
             if let Some(value) = numeric_value {
                 let clamped_value = value.clamp(0.0, 1.0);
                 let line_length = clamped_value * indicator_width;
-                let line_y = y - 17.0; // A few pixels below text to avoid overlap
+                let line_y = y - 19.0; // A few pixels below text to avoid overlap
 
                 // Draw background track (dim gray line showing full range)
                 draw.line()
