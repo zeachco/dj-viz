@@ -13,6 +13,8 @@ pub mod fractal_tree;
 pub mod gravity_flames;
 pub mod kaleidoscope;
 pub mod lava_blobs;
+pub mod psychedelic_spiral;
+pub mod shuffling_skeletons;
 pub mod solar_beat;
 pub mod spectro_road;
 pub mod squares;
@@ -47,6 +49,8 @@ const VIZ_LABELS: &[&[VisLabel]] = &[
     &[VisLabel::Organic, VisLabel::Intense],    // 9: GravityFlames
     &[VisLabel::Organic],                       // 10: FractalTree
     &[VisLabel::Cartoon],                       // 11: DancingSkeletons
+    &[VisLabel::Cartoon],                       // 12: ShufflingSkeletons
+    &[VisLabel::Organic, VisLabel::Intense],    // 13: PsychedelicSpiral
 ];
 
 const ALL_LABELS: &[VisLabel] = &[
@@ -68,6 +72,8 @@ pub use fractal_tree::FractalTree;
 pub use gravity_flames::GravityFlames;
 pub use kaleidoscope::Kaleidoscope;
 pub use lava_blobs::LavaBlobs;
+pub use psychedelic_spiral::PsychedelicSpiral;
+pub use shuffling_skeletons::ShufflingSkeletons;
 pub use solar_beat::SolarBeat;
 pub use spectro_road::SpectroRoad;
 pub use squares::Squares;
@@ -151,6 +157,8 @@ impl Renderer {
             Box::new(GravityFlames::new()),
             Box::new(FractalTree::new()),
             Box::new(DancingSkeletons::new()),
+            Box::new(ShufflingSkeletons::new()),
+            Box::new(PsychedelicSpiral::new()),
         ];
 
         let mut rng = rand::rng();
@@ -279,6 +287,8 @@ impl Renderer {
             9 => "GravityFlames",
             10 => "FractalTree",
             11 => "DancingSkeletons",
+            12 => "ShufflingSkeletons",
+            13 => "PsychedelicSpiral",
             _ => "Unknown",
         }
     }

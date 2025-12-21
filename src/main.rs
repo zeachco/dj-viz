@@ -8,6 +8,7 @@ use nannou::prelude::*;
 use renderer::{FeedbackRenderer, Renderer, Resolution};
 use std::cell::RefCell;
 use std::env;
+use nannou::winit::event::WindowEvent;
 use ui::bindings::{parse_key, Action};
 use ui::text_picker::{draw_text_picker, TextPickerState};
 
@@ -36,6 +37,8 @@ struct Model {
     phase_offset: f32,
     prev_energy: f32,
     last_analysis: AudioAnalysis,
+    /// Track shift key state from raw events (more reliable than app.keys.mods)
+    shift_held: bool,
 }
 
 fn model(app: &App) -> Model {
@@ -46,6 +49,7 @@ fn model(app: &App) -> Model {
         .new_window()
         .view(view)
         .key_pressed(key_pressed)
+        .raw_event(raw_event)
         .resized(resized)
         .size(resolution.width, resolution.height);
 
@@ -99,6 +103,7 @@ fn model(app: &App) -> Model {
         phase_offset: 0.0,
         prev_energy: 0.0,
         last_analysis: AudioAnalysis::default(),
+        shift_held: false,
     };
 
     // Enable debug visualization if --debug or -d flag was passed
@@ -215,6 +220,13 @@ fn resized(app: &App, model: &mut Model, size: Vec2) {
         sample_count,
         Frame::TEXTURE_FORMAT,
     );
+}
+
+fn raw_event(_app: &App, model: &mut Model, event: &WindowEvent) {
+    // Track shift key state from raw events for reliable modifier detection
+    if let WindowEvent::ModifiersChanged(mods) = event {
+        model.shift_held = mods.shift();
+    }
 }
 
 fn key_pressed(app: &App, model: &mut Model, key: Key) {
