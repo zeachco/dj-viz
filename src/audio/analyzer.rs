@@ -25,6 +25,13 @@ const BAND_EDGES: [f32; NUM_BANDS + 1] = [
 pub struct AudioAnalysis {
     /// Energy in each frequency band (0-1, smoothed)
     pub bands: [f32; NUM_BANDS],
+    /// Bands normalized relative to tracked min/max range (can be outside 0-1)
+    /// If a band oscillates between 0.6-0.9, this maps it to 0.0-1.0 range
+    pub bands_normalized: [f32; NUM_BANDS],
+    /// Tracked minimum values for each band
+    pub band_mins: [f32; NUM_BANDS],
+    /// Tracked maximum values for each band
+    pub band_maxs: [f32; NUM_BANDS],
     /// Overall energy/volume (0-1)
     pub energy: f32,
     /// Whether a musical transition was detected
@@ -53,6 +60,9 @@ impl Default for AudioAnalysis {
     fn default() -> Self {
         Self {
             bands: [0.0; NUM_BANDS],
+            bands_normalized: [0.0; NUM_BANDS],
+            band_mins: [0.0; NUM_BANDS],
+            band_maxs: [0.0; NUM_BANDS],
             energy: 0.0,
             transition_detected: false,
             bass: 0.0,
@@ -378,8 +388,23 @@ impl AudioAnalyzer {
         let treble =
             (self.smoothed_bands[5] + self.smoothed_bands[6] + self.smoothed_bands[7]) / 3.0;
 
+        // Compute normalized bands relative to tracked min/max
+        // This allows values outside [0, 1] when current is outside the tracked range
+        let mut bands_normalized = [0.0f32; NUM_BANDS];
+        for i in 0..NUM_BANDS {
+            let range = self.band_maxs[i] - self.band_mins[i];
+            if range > 0.01 {
+                bands_normalized[i] = (self.smoothed_bands[i] - self.band_mins[i]) / range;
+            } else {
+                bands_normalized[i] = 0.0;
+            }
+        }
+
         self.last_analysis = AudioAnalysis {
             bands: self.smoothed_bands,
+            bands_normalized,
+            band_mins: self.band_mins,
+            band_maxs: self.band_maxs,
             energy: self.smoothed_energy,
             transition_detected,
             bass,

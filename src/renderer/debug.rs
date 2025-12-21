@@ -22,6 +22,8 @@ pub struct DebugViz {
     frame_count: u32,
     /// Cached display values (updated every UPDATE_INTERVAL frames)
     display_bands: [f32; 8],
+    /// Normalized bands relative to tracked min/max (can be outside 0-1)
+    display_bands_normalized: [f32; 8],
     display_bass: f32,
     display_mids: f32,
     display_treble: f32,
@@ -34,8 +36,9 @@ pub struct DebugViz {
     display_last_mark: u32,
     display_viz_change: bool,
     /// Tracked min values for each band (for visualization)
+    /// Tracked min values for each band (from analyzer)
     display_band_mins: [f32; 8],
-    /// Tracked max values for each band (for visualization)
+    /// Tracked max values for each band (from analyzer)
     display_band_maxs: [f32; 8],
     /// Phosphor glow intensity
     glow_intensity: f32,
@@ -51,6 +54,7 @@ impl DebugViz {
         Self {
             frame_count: 0,
             display_bands: [0.0; 8],
+            display_bands_normalized: [0.0; 8],
             display_bass: 0.0,
             display_mids: 0.0,
             display_treble: 0.0,
@@ -166,6 +170,9 @@ impl Visualization for DebugViz {
         // Update display values every UPDATE_INTERVAL frames
         if self.frame_count % UPDATE_INTERVAL == 0 {
             self.display_bands = analysis.bands;
+            self.display_bands_normalized = analysis.bands_normalized;
+            self.display_band_mins = analysis.band_mins;
+            self.display_band_maxs = analysis.band_maxs;
             self.display_bass = analysis.bass;
             self.display_mids = analysis.mids;
             self.display_treble = analysis.treble;
@@ -230,16 +237,17 @@ impl Visualization for DebugViz {
             .font_size(FONT_SIZE);
 
         // Layout configuration
-        let column_spacing = bounds_w / 4.0;
+        let column_spacing = bounds_w / 5.0;
         let row_spacing = 30.0;
         let start_y = bounds.top() - 50.0;
-        let indicator_width = 150.0; // Max width for value indicators
+        let indicator_width = 120.0; // Max width for value indicators
 
-        // Prepare text data: (label, value_str, x, y, numeric_value)
-        let mut text_data: Vec<(String, String, f32, f32, Option<f32>)> = Vec::new();
+        // Prepare text data: (label, value_str, x, y, numeric_value, is_normalized)
+        // is_normalized: true means value can be outside 0-1, indicator should show differently
+        let mut text_data: Vec<(String, String, f32, f32, Option<f32>, bool)> = Vec::new();
 
-        // Column 1: Frequency bands
-        let col1_x = center.x - column_spacing;
+        // Column 1: Frequency bands (raw values)
+        let col1_x = center.x - column_spacing * 1.5;
         for i in 0..8 {
             text_data.push((
                 format!("Band {}", i),
@@ -247,48 +255,67 @@ impl Visualization for DebugViz {
                 col1_x,
                 start_y - row_spacing * i as f32,
                 Some(self.display_bands[i]),
+                false,
             ));
         }
 
-        // Column 2: Bass/Mids/Treble
-        let col2_x = center.x;
+        // Column 2: Normalized bands (relative to min/max)
+        let col2_x = center.x - column_spacing * 0.5;
+        for i in 0..8 {
+            text_data.push((
+                format!("Norm {}", i),
+                Self::format_value(self.display_bands_normalized[i]),
+                col2_x,
+                start_y - row_spacing * i as f32,
+                Some(self.display_bands_normalized[i]),
+                true,
+            ));
+        }
+
+        // Column 3: Bass/Mids/Treble
+        let col3_x = center.x + column_spacing * 0.5;
         text_data.push((
             "Bass".to_string(),
             Self::format_value(self.display_bass),
-            col2_x,
+            col3_x,
             start_y,
             Some(self.display_bass),
+            false,
         ));
         text_data.push((
             "Mids".to_string(),
             Self::format_value(self.display_mids),
-            col2_x,
+            col3_x,
             start_y - row_spacing,
             Some(self.display_mids),
+            false,
         ));
         text_data.push((
             "Treble".to_string(),
             Self::format_value(self.display_treble),
-            col2_x,
+            col3_x,
             start_y - row_spacing * 2.0,
             Some(self.display_treble),
+            false,
         ));
 
-        // Column 3: Energy/Energy Diff/Transition
-        let col3_x = center.x + column_spacing;
+        // Column 4: Energy/Energy Diff/Transition
+        let col4_x = center.x + column_spacing * 1.5;
         text_data.push((
             "Energy".to_string(),
             Self::format_value(self.display_energy),
-            col3_x,
+            col4_x,
             start_y,
             Some(self.display_energy),
+            false,
         ));
         text_data.push((
             "Energy Diff".to_string(),
             Self::format_value(self.display_energy_diff),
-            col3_x,
+            col4_x,
             start_y - row_spacing,
             Some(self.display_energy_diff.abs()), // Use absolute value for visualization
+            false,
         ));
         text_data.push((
             "Transition".to_string(),
@@ -297,9 +324,10 @@ impl Visualization for DebugViz {
             } else {
                 "FALSE".to_string()
             },
-            col3_x,
+            col4_x,
             start_y - row_spacing * 2.0,
             None, // Boolean, no indicator
+            false,
         ));
         text_data.push((
             "Zoom Shift".to_string(),
@@ -308,9 +336,10 @@ impl Visualization for DebugViz {
             } else {
                 "FALSE".to_string()
             },
-            col3_x,
+            col4_x,
             start_y - row_spacing * 3.0,
             None, // Boolean, no indicator
+            false,
         ));
         text_data.push((
             "BPM".to_string(),
@@ -350,11 +379,13 @@ impl Visualization for DebugViz {
         ));
 
         // Draw main text with value-based colors
-        for (label, value, x, y, numeric_value) in &text_data {
+        for (label, value, x, y, numeric_value, is_normalized) in &text_data {
             let text_str = format!("{}: {}", label, value);
             // Use value-based color if numeric, otherwise use phosphor green
+            // For normalized values, clamp to 0-1 for color purposes
             let color = if let Some(val) = numeric_value {
-                self.value_color(*val, 255.0 * self.glow_intensity)
+                let display_val = if *is_normalized { val.clamp(0.0, 1.0) } else { *val };
+                self.value_color(display_val, 255.0 * self.glow_intensity)
             } else {
                 self.phosphor_color(255.0 * self.glow_intensity)
             };
@@ -365,48 +396,81 @@ impl Visualization for DebugViz {
         }
 
         // Draw debug indicator lines below numeric values
-        for (idx, (_, _, x, y, numeric_value)) in text_data.iter().enumerate() {
+        for (idx, (_, _, x, y, numeric_value, is_normalized)) in text_data.iter().enumerate() {
             if let Some(value) = numeric_value {
-                let clamped_value = value.clamp(0.0, 1.0);
-                let line_length = clamped_value * indicator_width;
                 let line_y = y - 19.0; // A few pixels below text to avoid overlap
 
-                // Draw background track (dim gray line showing full range)
-                draw.line()
-                    .start(pt2(*x - indicator_width / 2.0, line_y))
-                    .end(pt2(*x + indicator_width / 2.0, line_y))
-                    .weight(1.0)
-                    .color(srgba(80u8, 80u8, 80u8, 100u8));
+                if *is_normalized {
+                    // For normalized values: draw a centered indicator that can extend beyond 0-1
+                    // Center is at 0.5 of the indicator, representing normalized value of 0.5
+                    let center_x = *x;
 
-                // Draw 2.5px line with value-based color
-                let line_color = self.value_color(*value, 220.0 * self.glow_intensity);
-                draw.line()
-                    .start(pt2(*x - indicator_width / 2.0, line_y))
-                    .end(pt2(*x - indicator_width / 2.0 + line_length, line_y))
-                    .weight(2.5)
-                    .color(line_color);
-
-                // Draw tracked min/max markers for frequency bands (first 8 entries)
-                if idx < 8 {
-                    let band_idx = idx;
-
-                    // Yellow marker for tracked minimum
-                    let min_val = self.display_band_mins[band_idx].clamp(0.0, 1.0);
-                    let marker_min_x = *x - indicator_width / 2.0 + min_val * indicator_width;
+                    // Draw background track
                     draw.line()
-                        .start(pt2(marker_min_x, line_y - 4.0))
-                        .end(pt2(marker_min_x, line_y + 4.0))
-                        .weight(1.5)
-                        .color(srgba(200u8, 180u8, 0u8, 180u8)); // Yellow marker
+                        .start(pt2(*x - indicator_width / 2.0, line_y))
+                        .end(pt2(*x + indicator_width / 2.0, line_y))
+                        .weight(1.0)
+                        .color(srgba(80u8, 80u8, 80u8, 100u8));
 
-                    // Red marker for tracked maximum
-                    let max_val = self.display_band_maxs[band_idx].clamp(0.0, 1.0);
-                    let marker_max_x = *x - indicator_width / 2.0 + max_val * indicator_width;
+                    // Draw center marker (where 0.5 is)
                     draw.line()
-                        .start(pt2(marker_max_x, line_y - 4.0))
-                        .end(pt2(marker_max_x, line_y + 4.0))
-                        .weight(1.5)
-                        .color(srgba(220u8, 50u8, 50u8, 200u8)); // Red marker
+                        .start(pt2(center_x, line_y - 3.0))
+                        .end(pt2(center_x, line_y + 3.0))
+                        .weight(1.0)
+                        .color(srgba(100u8, 100u8, 100u8, 150u8));
+
+                    // Draw value indicator - clamped to fit within indicator width
+                    // 0.0 normalized = left edge, 1.0 normalized = right edge
+                    let clamped_norm = value.clamp(0.0, 1.0);
+                    let value_x = *x - indicator_width / 2.0 + clamped_norm * indicator_width;
+                    let line_color = self.value_color(clamped_norm, 220.0 * self.glow_intensity);
+                    draw.line()
+                        .start(pt2(*x - indicator_width / 2.0, line_y))
+                        .end(pt2(value_x, line_y))
+                        .weight(2.5)
+                        .color(line_color);
+                } else {
+                    // Standard 0-1 indicator for non-normalized values
+                    let clamped_value = value.clamp(0.0, 1.0);
+                    let line_length = clamped_value * indicator_width;
+
+                    // Draw background track (dim gray line showing full range)
+                    draw.line()
+                        .start(pt2(*x - indicator_width / 2.0, line_y))
+                        .end(pt2(*x + indicator_width / 2.0, line_y))
+                        .weight(1.0)
+                        .color(srgba(80u8, 80u8, 80u8, 100u8));
+
+                    // Draw 2.5px line with value-based color
+                    let line_color = self.value_color(*value, 220.0 * self.glow_intensity);
+                    draw.line()
+                        .start(pt2(*x - indicator_width / 2.0, line_y))
+                        .end(pt2(*x - indicator_width / 2.0 + line_length, line_y))
+                        .weight(2.5)
+                        .color(line_color);
+
+                    // Draw tracked min/max markers for frequency bands (first 8 entries)
+                    if idx < 8 {
+                        let band_idx = idx;
+
+                        // Yellow marker for tracked minimum
+                        let min_val = self.display_band_mins[band_idx].clamp(0.0, 1.0);
+                        let marker_min_x = *x - indicator_width / 2.0 + min_val * indicator_width;
+                        draw.line()
+                            .start(pt2(marker_min_x, line_y - 4.0))
+                            .end(pt2(marker_min_x, line_y + 4.0))
+                            .weight(1.5)
+                            .color(srgba(200u8, 180u8, 0u8, 180u8)); // Yellow marker
+
+                        // Red marker for tracked maximum
+                        let max_val = self.display_band_maxs[band_idx].clamp(0.0, 1.0);
+                        let marker_max_x = *x - indicator_width / 2.0 + max_val * indicator_width;
+                        draw.line()
+                            .start(pt2(marker_max_x, line_y - 4.0))
+                            .end(pt2(marker_max_x, line_y + 4.0))
+                            .weight(1.5)
+                            .color(srgba(220u8, 50u8, 50u8, 200u8)); // Red marker
+                    }
                 }
             }
         }
