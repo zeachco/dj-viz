@@ -4,6 +4,7 @@
 //! devices at runtime.
 
 use cpal::traits::{DeviceTrait, HostTrait};
+use crate::ui::text_picker::{PickerItem, TextPickerState};
 
 /// Represents an audio device entry for search/selection
 #[derive(Clone, Debug)]
@@ -162,5 +163,31 @@ impl OutputCapture {
 impl Default for OutputCapture {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl PickerItem for AudioDeviceEntry {
+    fn display(&self) -> String {
+        self.display()
+    }
+}
+
+impl TextPickerState for OutputCapture {
+    type Item = AudioDeviceEntry;
+
+    fn is_active(&self) -> bool {
+        self.search_active
+    }
+
+    fn query(&self) -> &str {
+        &self.query
+    }
+
+    fn filtered_items(&self) -> &[Self::Item] {
+        &self.filtered
+    }
+
+    fn selected_index(&self) -> usize {
+        self.selected_idx
     }
 }

@@ -192,15 +192,23 @@ impl Renderer {
     }
 
     /// Manually cycle to the next visualization (unlocks auto-cycling)
-    pub fn cycle_next(&mut self) {
+    /// Advances by the number of bands over 0.9 threshold
+    pub fn cycle_next(&mut self, analysis: &AudioAnalysis) {
         if self.visualizations.len() > 1 {
-            self.current_idx = (self.current_idx + 1) % self.visualizations.len();
+            // Count bands with energy > 0.9
+            let high_bands = analysis.bands.iter().filter(|&&b| b > 0.9).count();
+            // Advance by at least 1, even if no bands are high
+            let step = high_bands.max(1);
+
+            self.current_idx = (self.current_idx + step) % self.visualizations.len();
             self.select_overlays(0.5); // Use medium energy for manual cycling
             self.cooldown = COOLDOWN_FRAMES;
             self.locked = false; // Space unlocks and resumes auto-cycling
             println!(
-                "Switched to visualization {} with {} overlays",
+                "Switched to visualization {} (advanced by {} based on {} high bands) with {} overlays",
                 self.current_idx,
+                step,
+                high_bands,
                 self.overlay_indices.len()
             );
         }
