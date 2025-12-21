@@ -532,14 +532,14 @@ impl Visualization for FractalTree {
         let main_branch_count = self.branches.iter().filter(|b| b.parent_id.is_none()).count();
         if analysis.energy_diff.abs() >= ENERGY_THRESHOLD && self.last_energy_diff.abs() < ENERGY_THRESHOLD {
             if main_branch_count < MAX_BRANCHES {
-                let color = Self::color_from_bands(&analysis.bands);
+                let color = Self::color_from_bands(&analysis.bands_normalized);
                 self.spawn_main_branch_with_color(color);
             }
         }
 
         // Ensure minimum main branches
         if main_branch_count < MIN_BRANCHES {
-            let color = Self::color_from_bands(&analysis.bands);
+            let color = Self::color_from_bands(&analysis.bands_normalized);
             self.spawn_main_branch_with_color(color);
         }
 

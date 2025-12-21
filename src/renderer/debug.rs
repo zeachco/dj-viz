@@ -351,6 +351,7 @@ impl Visualization for DebugViz {
             col3_x,
             start_y - row_spacing * 4.0,
             None, // No indicator for BPM
+            false,
         ));
         text_data.push((
             "Dominant Band".to_string(),
@@ -358,6 +359,7 @@ impl Visualization for DebugViz {
             col3_x,
             start_y - row_spacing * 5.0,
             None, // No indicator for dominant band
+            false,
         ));
         text_data.push((
             "Last Mark".to_string(),
@@ -365,6 +367,7 @@ impl Visualization for DebugViz {
             col3_x,
             start_y - row_spacing * 6.0,
             None, // No indicator for last mark
+            false,
         ));
         text_data.push((
             "Viz Change".to_string(),
@@ -376,6 +379,7 @@ impl Visualization for DebugViz {
             col3_x,
             start_y - row_spacing * 7.0,
             None, // Boolean, no indicator
+            false,
         ));
 
         // Draw main text with value-based colors

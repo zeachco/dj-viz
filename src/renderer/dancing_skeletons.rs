@@ -235,8 +235,8 @@ impl Skeleton {
             }
 
             // Detect bass hit (Band 0 or Band 1 exceeds threshold)
-            let bass_hit = (analysis.bands[0] > BASS_THRESHOLD
-                || analysis.bands[1] > BASS_THRESHOLD)
+            let bass_hit = (analysis.bands_normalized[0] > BASS_THRESHOLD
+                || analysis.bands_normalized[1] > BASS_THRESHOLD)
                 && self.shuffle_cooldown == 0;
 
             if bass_hit {

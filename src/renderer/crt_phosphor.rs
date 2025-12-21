@@ -191,7 +191,7 @@ impl Visualization for CrtPhosphor {
 
                 // Modulate with audio bands
                 let band_idx = (t * 7.0) as usize;
-                let modulation = analysis.bands[band_idx.min(7)];
+                let modulation = analysis.bands_normalized[band_idx.min(7)];
 
                 self.current_waveform.push(TrailPoint {
                     x: x * (0.7 + modulation * 0.3),
@@ -205,7 +205,7 @@ impl Visualization for CrtPhosphor {
 
                 // Y is audio waveform (synthesized from bands)
                 let mut y = 0.0;
-                for (band_idx, &band) in analysis.bands.iter().enumerate() {
+                for (band_idx, &band) in analysis.bands_normalized.iter().enumerate() {
                     let freq = (band_idx + 1) as f32;
                     let phase = self.sweep_phase * freq;
                     y += band * (t * std::f32::consts::TAU * freq + phase).sin() * 0.3;

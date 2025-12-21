@@ -224,7 +224,7 @@ impl Visualization for BlackHole {
 
             // Size variation with audio
             let band_idx = ((particle.angle / std::f32::consts::TAU) * 8.0) as usize % 8;
-            particle.size = 1.0 + analysis.bands[band_idx] * 3.0;
+            particle.size = 1.0 + analysis.bands_normalized[band_idx] * 3.0;
         }
 
         // Update star twinkle

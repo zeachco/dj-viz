@@ -144,13 +144,13 @@ impl Visualization for Kaleidoscope {
 
             // Swirl within segment based on bands
             let band_idx = i % 8;
-            particle.local_angle += analysis.bands[band_idx] * 0.02;
+            particle.local_angle += analysis.bands_normalized[band_idx] * 0.02;
             if particle.local_angle > segment_angle {
                 particle.local_angle -= segment_angle;
             }
 
             // Size pulses with corresponding band
-            particle.size = 0.5 + analysis.bands[band_idx] * 1.5;
+            particle.size = 0.5 + analysis.bands_normalized[band_idx] * 1.5;
         }
     }
 

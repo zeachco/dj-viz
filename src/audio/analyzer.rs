@@ -121,8 +121,8 @@ pub struct AudioAnalyzer {
     last_dominant_update_time: f32, // Last time dominant band was updated
 
     // Drastic band change detection (last_mark)
-    last_mark: u32,                        // Frames since last drastic change
-    reference_bands: [f32; NUM_BANDS],     // Reference bands for comparison
+    last_mark: u32,                    // Frames since last drastic change
+    reference_bands: [f32; NUM_BANDS], // Reference bands for comparison
 
     // Frame skipping for performance
     frame_count: u32,
@@ -229,8 +229,8 @@ impl AudioAnalyzer {
 
                 // Adaptive normalization: track min/max of the output (0-1 range)
                 // This creates perceptual adaptation - sustained intensity becomes less intense
-                const MIN_DRIFT: f32 = 0.9995; // Very slow drift towards current
-                const MAX_DRIFT: f32 = 0.9995;
+                const MIN_DRIFT: f32 = 0.985; // Faster drift towards current (~1 sec at 60fps)
+                const MAX_DRIFT: f32 = 0.985;
 
                 // Update minimum - track lowest output, slowly drift up towards current
                 if rough_normalized < self.band_mins[i] || self.band_mins[i] == 0.0 {
@@ -380,7 +380,8 @@ impl AudioAnalyzer {
 
         // Visualization change triggers when zoom shift happens with high energy
         const VIZ_CHANGE_ENERGY_THRESHOLD: f32 = 0.95;
-        let viz_change_triggered = zoom_direction_shift && self.smoothed_energy >= VIZ_CHANGE_ENERGY_THRESHOLD;
+        let viz_change_triggered =
+            zoom_direction_shift && self.smoothed_energy >= VIZ_CHANGE_ENERGY_THRESHOLD;
 
         // Compute aggregate values
         let bass = (self.smoothed_bands[0] + self.smoothed_bands[1]) / 2.0;

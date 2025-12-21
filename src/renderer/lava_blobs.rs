@@ -173,8 +173,8 @@ impl Visualization for LavaBlobs {
             let noise_x = Self::noise(blob.x * 0.01, blob.y * 0.01, t) - 0.5;
             let noise_y = Self::noise(blob.y * 0.01, blob.x * 0.01 + 100.0, t) - 0.5;
 
-            blob.vx += noise_x * 0.3 + analysis.bands[i % 8] * noise_x * 2.0;
-            blob.vy += noise_y * 0.3 + analysis.bands[i % 8] * noise_y * 2.0;
+            blob.vx += noise_x * 0.3 + analysis.bands_normalized[i % 8] * noise_x * 2.0;
+            blob.vy += noise_y * 0.3 + analysis.bands_normalized[i % 8] * noise_y * 2.0;
 
             // Damping
             blob.vx *= 0.98;
@@ -210,7 +210,7 @@ impl Visualization for LavaBlobs {
             }
 
             // Radius pulses with corresponding frequency band
-            let band_value = analysis.bands[i % 8];
+            let band_value = analysis.bands_normalized[i % 8];
             blob.target_radius = 35.0 + band_value * 50.0;
             blob.radius = blob.radius * 0.9 + blob.target_radius * 0.1;
         }

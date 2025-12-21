@@ -112,7 +112,7 @@ impl Visualization for BeatBars {
 
         // Smooth band values
         for i in 0..NUM_BANDS {
-            self.smoothed_bands[i] = self.smoothed_bands[i] * 0.7 + analysis.bands[i] * 0.3;
+            self.smoothed_bands[i] = self.smoothed_bands[i] * 0.7 + analysis.bands_normalized[i] * 0.3;
         }
 
         // Tracking error triggered by bass hits

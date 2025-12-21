@@ -84,7 +84,7 @@ impl Visualization for SolarBeat {
     fn update(&mut self, analysis: &AudioAnalysis) {
         // Calculate smoothed magnitudes for each line from band data
         for i in 0..NUM_LINES {
-            let band_value = self.line_to_band_value(i, &analysis.bands);
+            let band_value = self.line_to_band_value(i, &analysis.bands_normalized);
 
             // Light smoothing over time
             let smoothing = 0.2;

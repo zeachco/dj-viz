@@ -185,7 +185,7 @@ impl Visualization for SpectroRoad {
         self.shift_counter = self.shift_counter.wrapping_add(1);
         if self.shift_counter % 3 == 0 {
             self.history.remove(0);
-            self.history.push(analysis.bands);
+            self.history.push(analysis.bands_normalized);
         }
 
         // Track intensity with less smoothing for more reactive scaling

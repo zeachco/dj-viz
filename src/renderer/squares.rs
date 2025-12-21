@@ -120,7 +120,7 @@ impl Visualization for Squares {
         for i in 0..NUM_BANDS {
             let smoothing = 0.3;
             self.smoothed_bands[i] =
-                self.smoothed_bands[i] * smoothing + analysis.bands[i] * (1.0 - smoothing);
+                self.smoothed_bands[i] * smoothing + analysis.bands_normalized[i] * (1.0 - smoothing);
         }
 
         // Detect high peak and cycle hue (use treble from analysis)

@@ -130,12 +130,12 @@ impl Visualization for GravityFlames {
 
         // Smooth frequency bands and energy
         for i in 0..8 {
-            if analysis.bands[i] > self.smoothed_bands[i] {
+            if analysis.bands_normalized[i] > self.smoothed_bands[i] {
                 self.smoothed_bands[i] =
-                    self.smoothed_bands[i] * (1.0 - ATTACK) + analysis.bands[i] * ATTACK;
+                    self.smoothed_bands[i] * (1.0 - ATTACK) + analysis.bands_normalized[i] * ATTACK;
             } else {
                 self.smoothed_bands[i] =
-                    self.smoothed_bands[i] * (1.0 - DECAY) + analysis.bands[i] * DECAY;
+                    self.smoothed_bands[i] * (1.0 - DECAY) + analysis.bands_normalized[i] * DECAY;
             }
         }
 

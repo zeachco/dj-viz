@@ -280,7 +280,7 @@ impl Visualization for TeslaCoil {
         self.treble = self.treble * 0.8 + analysis.treble * 0.2;
 
         // Kick intensity combines bass and low-mids
-        let kick = (self.bass + analysis.bands[2] * 0.5) / 1.5;
+        let kick = (self.bass + analysis.bands_normalized[2] * 0.5) / 1.5;
         if kick > self.kick_intensity {
             self.kick_intensity = self.kick_intensity * 0.3 + kick * 0.7;
         } else {
