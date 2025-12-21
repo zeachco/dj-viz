@@ -19,9 +19,44 @@ pub mod squares;
 pub mod tesla_coil;
 
 use nannou::prelude::*;
-use rand::Rng;
 
 use crate::audio::AudioAnalysis;
+
+/// Labels for categorizing visualizations that can be layered together
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum VisLabel {
+    Organic,
+    Geometric,
+    Cartoon,
+    Glitchy,
+    Intense,
+    Retro,
+}
+
+/// Labels for each visualization (indexed same as visualizations vec)
+const VIZ_LABELS: &[&[VisLabel]] = &[
+    &[VisLabel::Geometric, VisLabel::Intense],  // 0: SolarBeat
+    &[VisLabel::Geometric, VisLabel::Retro],    // 1: SpectroRoad
+    &[VisLabel::Geometric],                     // 2: Squares
+    &[VisLabel::Glitchy, VisLabel::Intense],    // 3: TeslaCoil
+    &[VisLabel::Geometric],                     // 4: Kaleidoscope
+    &[VisLabel::Organic],                       // 5: LavaBlobs
+    &[VisLabel::Geometric, VisLabel::Retro],    // 6: BeatBars
+    &[VisLabel::Retro, VisLabel::Glitchy],      // 7: CrtPhosphor
+    &[VisLabel::Organic, VisLabel::Intense],    // 8: BlackHole
+    &[VisLabel::Organic, VisLabel::Intense],    // 9: GravityFlames
+    &[VisLabel::Organic],                       // 10: FractalTree
+    &[VisLabel::Cartoon],                       // 11: DancingSkeletons
+];
+
+const ALL_LABELS: &[VisLabel] = &[
+    VisLabel::Organic,
+    VisLabel::Geometric,
+    VisLabel::Cartoon,
+    VisLabel::Glitchy,
+    VisLabel::Intense,
+    VisLabel::Retro,
+];
 
 pub use beat_bars::BeatBars;
 pub use black_hole::BlackHole;
@@ -119,10 +154,8 @@ impl Renderer {
         ];
 
         let mut rng = rand::rng();
-        let current_idx = rng.random_range(0..visualizations.len());
-        // Start with medium energy (0.5) for initial overlay selection
-        let overlay_indices =
-            Self::select_overlays_for(current_idx, visualizations.len(), 0.5, &mut rng);
+        // Select initial visualizations by matching labels
+        let (current_idx, overlay_indices) = Self::select_by_labels(&mut rng);
 
         Self {
             visualizations,
@@ -137,52 +170,65 @@ impl Renderer {
         }
     }
 
-    /// Selects 0-3 random overlay visualization indices (excluding the primary)
-    /// based on audio energy: low energy → fewer overlays, high energy → more overlays
-    fn select_overlays_for(
-        primary_idx: usize,
-        count: usize,
-        energy: f32,
-        rng: &mut impl rand::Rng,
-    ) -> Vec<usize> {
-        if count <= 1 {
-            return Vec::new();
-        }
+    /// Selects 1-4 visualizations by picking 1-2 random labels and finding matches
+    /// Returns (primary_idx, overlay_indices)
+    fn select_by_labels(rng: &mut impl rand::Rng) -> (usize, Vec<usize>) {
+        // Pick 1 or 2 random labels
+        let num_labels = rng.random_range(1..=2);
+        let mut selected_labels = Vec::with_capacity(num_labels);
 
-        // Map energy (0-1) to overlay count (0-3)
-        // Low energy (< 0.3): 0-1 overlays
-        // Medium energy (0.3-0.6): 1-2 overlays
-        // High energy (> 0.6): 2-3 overlays
-        let max_overlays = if energy < 0.3 {
-            rng.random_range(0..=1)
-        } else if energy < 0.6 {
-            rng.random_range(1..=2)
-        } else {
-            rng.random_range(2..=3)
-        };
-
-        let num_overlays = max_overlays.min(count - 1);
-        let mut overlays = Vec::with_capacity(num_overlays);
-
-        while overlays.len() < num_overlays {
-            let idx = rng.random_range(0..count);
-            if idx != primary_idx && !overlays.contains(&idx) {
-                overlays.push(idx);
+        while selected_labels.len() < num_labels {
+            let label = ALL_LABELS[rng.random_range(0..ALL_LABELS.len())];
+            if !selected_labels.contains(&label) {
+                selected_labels.push(label);
             }
         }
 
-        overlays
+        // Find all visualizations matching ANY of the selected labels
+        let matching: Vec<usize> = VIZ_LABELS
+            .iter()
+            .enumerate()
+            .filter(|(_, labels)| selected_labels.iter().any(|l| labels.contains(l)))
+            .map(|(i, _)| i)
+            .collect();
+
+        if matching.is_empty() {
+            // Fallback to first visualization
+            return (0, Vec::new());
+        }
+
+        // Select 1-4 from matching
+        let count = rng.random_range(1..=4).min(matching.len());
+        let mut selected: Vec<usize> = Vec::with_capacity(count);
+
+        while selected.len() < count {
+            let idx = matching[rng.random_range(0..matching.len())];
+            if !selected.contains(&idx) {
+                selected.push(idx);
+            }
+        }
+
+        // First one is primary, rest are overlays
+        let primary = selected[0];
+        let overlays = selected[1..].to_vec();
+
+        println!(
+            "Selected labels {:?} → {} visualizations (primary: {}, overlays: {:?})",
+            selected_labels,
+            selected.len(),
+            Self::visualization_name(primary),
+            overlays.iter().map(|&i| Self::visualization_name(i)).collect::<Vec<_>>()
+        );
+
+        (primary, overlays)
     }
 
-    /// Selects new overlay visualizations for the current primary based on audio energy
-    fn select_overlays(&mut self, energy: f32) {
+    /// Selects new visualizations based on matching labels
+    fn select_new_visualizations(&mut self) {
         let mut rng = rand::rng();
-        self.overlay_indices = Self::select_overlays_for(
-            self.current_idx,
-            self.visualizations.len(),
-            energy,
-            &mut rng,
-        );
+        let (primary, overlays) = Self::select_by_labels(&mut rng);
+        self.current_idx = primary;
+        self.overlay_indices = overlays;
     }
 
     /// Shows a notification message for 3 seconds
@@ -191,26 +237,13 @@ impl Renderer {
         self.notification_frames = NOTIFICATION_FRAMES;
     }
 
-    /// Manually cycle to the next visualization (unlocks auto-cycling)
-    /// Advances by the number of bands over 0.9 threshold
-    pub fn cycle_next(&mut self, analysis: &AudioAnalysis) {
+    /// Manually cycle to new visualizations (unlocks auto-cycling)
+    /// Selects new set based on matching labels
+    pub fn cycle_next(&mut self, _analysis: &AudioAnalysis) {
         if self.visualizations.len() > 1 {
-            // Count bands with energy > 0.9
-            let high_bands = analysis.bands.iter().filter(|&&b| b > 0.9).count();
-            // Advance by at least 1, even if no bands are high
-            let step = high_bands.max(1);
-
-            self.current_idx = (self.current_idx + step) % self.visualizations.len();
-            self.select_overlays(0.5); // Use medium energy for manual cycling
+            self.select_new_visualizations();
             self.cooldown = COOLDOWN_FRAMES;
             self.locked = false; // Space unlocks and resumes auto-cycling
-            println!(
-                "Switched to visualization {} (advanced by {} based on {} high bands) with {} overlays",
-                self.current_idx,
-                step,
-                high_bands,
-                self.overlay_indices.len()
-            );
         }
     }
 
@@ -268,28 +301,9 @@ impl Renderer {
             && !self.locked
             && analysis.transition_detected
         {
-            // Switch to a random different visualization
-            let mut rng = rand::rng();
-            let new_idx = loop {
-                let idx = rng.random_range(0..self.visualizations.len());
-                if idx != self.current_idx || self.visualizations.len() == 1 {
-                    break idx;
-                }
-            };
-            self.current_idx = new_idx;
-
-            // Use combined energy metric: overall energy + treble (for hi-hats/cymbals) + bass (for kicks)
-            // This makes rapid sounds (techno kicks, hi-hats) increase overlay count
-            let combined_energy =
-                (analysis.energy * 0.5 + analysis.treble * 0.3 + analysis.bass * 0.2).min(1.0);
-            self.select_overlays(combined_energy);
+            // Select new visualizations based on matching labels
+            self.select_new_visualizations();
             self.cooldown = COOLDOWN_FRAMES;
-            println!(
-                "Switched to visualization {} with {} overlays (energy: {:.2})",
-                self.current_idx,
-                self.overlay_indices.len(),
-                combined_energy
-            );
         }
 
         // Update the active visualization
