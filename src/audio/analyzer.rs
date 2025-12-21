@@ -16,7 +16,9 @@ const FFT_SIZE: usize = 2048;
 
 /// Frequency band boundaries (Hz) for 44.1kHz sample rate
 /// Sub-bass, Bass, Low-mid, Mid, Upper-mid, Presence, Brilliance, Air
-const BAND_EDGES: [f32; NUM_BANDS + 1] = [20.0, 60.0, 250.0, 500.0, 2000.0, 4000.0, 6000.0, 12000.0, 20000.0];
+const BAND_EDGES: [f32; NUM_BANDS + 1] = [
+    20.0, 60.0, 250.0, 500.0, 2000.0, 4000.0, 6000.0, 12000.0, 20000.0,
+];
 
 /// Pre-computed analysis results - no allocations needed by visualizations
 #[derive(Clone)]
@@ -37,10 +39,6 @@ pub struct AudioAnalysis {
     pub energy_diff: f32,
     /// Whether zoom direction should shift (triggered when energy_diff crosses ±0.15)
     pub zoom_direction_shift: bool,
-    /// Tracked minimum values for each band (for normalization)
-    pub band_mins: [f32; NUM_BANDS],
-    /// Tracked maximum values for each band (for normalization)
-    pub band_maxs: [f32; NUM_BANDS],
 }
 
 impl Default for AudioAnalysis {
@@ -108,9 +106,7 @@ impl AudioAnalyzer {
 
         // Pre-compute Hann window
         let fft_window: Vec<f32> = (0..FFT_SIZE)
-            .map(|i| {
-                0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / FFT_SIZE as f32).cos())
-            })
+            .map(|i| 0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / FFT_SIZE as f32).cos()))
             .collect();
 
         // Pre-compute which FFT bins correspond to each frequency band
@@ -194,7 +190,8 @@ impl AudioAnalyzer {
                     self.band_mins[i] = rough_normalized;
                 } else {
                     // Drift upwards towards current value
-                    self.band_mins[i] = self.band_mins[i] * MIN_DRIFT + rough_normalized * (1.0 - MIN_DRIFT);
+                    self.band_mins[i] =
+                        self.band_mins[i] * MIN_DRIFT + rough_normalized * (1.0 - MIN_DRIFT);
                 }
 
                 // Update maximum - track highest output, slowly drift down towards current
@@ -202,7 +199,8 @@ impl AudioAnalyzer {
                     self.band_maxs[i] = rough_normalized;
                 } else {
                     // Drift downwards towards current value
-                    self.band_maxs[i] = self.band_maxs[i] * MAX_DRIFT + rough_normalized * (1.0 - MAX_DRIFT);
+                    self.band_maxs[i] =
+                        self.band_maxs[i] * MAX_DRIFT + rough_normalized * (1.0 - MAX_DRIFT);
                 }
 
                 // Re-normalize using tracked min/max to utilize full 0-1 range
@@ -219,9 +217,11 @@ impl AudioAnalyzer {
         let decay = 0.15;
         for i in 0..NUM_BANDS {
             if bands_raw[i] > self.smoothed_bands[i] {
-                self.smoothed_bands[i] = self.smoothed_bands[i] * (1.0 - attack) + bands_raw[i] * attack;
+                self.smoothed_bands[i] =
+                    self.smoothed_bands[i] * (1.0 - attack) + bands_raw[i] * attack;
             } else {
-                self.smoothed_bands[i] = self.smoothed_bands[i] * (1.0 - decay) + bands_raw[i] * decay;
+                self.smoothed_bands[i] =
+                    self.smoothed_bands[i] * (1.0 - decay) + bands_raw[i] * decay;
             }
         }
 
@@ -241,11 +241,11 @@ impl AudioAnalyzer {
 
         // Detect zoom direction shift when energy_diff crosses ±0.15 threshold
         const ZOOM_THRESHOLD: f32 = 0.15;
-        let zoom_direction_shift =
-            (self.prev_energy_diff < ZOOM_THRESHOLD && energy_diff >= ZOOM_THRESHOLD) ||
-            (self.prev_energy_diff > -ZOOM_THRESHOLD && energy_diff <= -ZOOM_THRESHOLD) ||
-            (self.prev_energy_diff >= ZOOM_THRESHOLD && energy_diff < ZOOM_THRESHOLD) ||
-            (self.prev_energy_diff <= -ZOOM_THRESHOLD && energy_diff > -ZOOM_THRESHOLD);
+        let zoom_direction_shift = (self.prev_energy_diff < ZOOM_THRESHOLD
+            && energy_diff >= ZOOM_THRESHOLD)
+            || (self.prev_energy_diff > -ZOOM_THRESHOLD && energy_diff <= -ZOOM_THRESHOLD)
+            || (self.prev_energy_diff >= ZOOM_THRESHOLD && energy_diff < ZOOM_THRESHOLD)
+            || (self.prev_energy_diff <= -ZOOM_THRESHOLD && energy_diff > -ZOOM_THRESHOLD);
 
         self.prev_energy_diff = energy_diff;
         self.prev_bands = bands_raw;
@@ -256,7 +256,8 @@ impl AudioAnalyzer {
         // Compute aggregate values
         let bass = (self.smoothed_bands[0] + self.smoothed_bands[1]) / 2.0;
         let mids = (self.smoothed_bands[2] + self.smoothed_bands[3] + self.smoothed_bands[4]) / 3.0;
-        let treble = (self.smoothed_bands[5] + self.smoothed_bands[6] + self.smoothed_bands[7]) / 3.0;
+        let treble =
+            (self.smoothed_bands[5] + self.smoothed_bands[6] + self.smoothed_bands[7]) / 3.0;
 
         self.last_analysis = AudioAnalysis {
             bands: self.smoothed_bands,
@@ -279,7 +280,11 @@ impl AudioAnalyzer {
         let low_energy: f32 = bands[0..3].iter().sum();
         let high_energy: f32 = bands[5..8].iter().sum();
         let total = low_energy + high_energy;
-        let freq_ratio = if total > 0.0 { high_energy / total } else { 0.0 };
+        let freq_ratio = if total > 0.0 {
+            high_energy / total
+        } else {
+            0.0
+        };
 
         // Store in history
         let history_size = self.energy_history.len();
@@ -303,9 +308,14 @@ impl AudioAnalyzer {
         let energy_diff = (recent_energy - long_energy).abs();
         let freq_diff = (recent_freq - long_freq).abs();
 
-        let norm_energy_diff = if long_energy > 0.01 { energy_diff / long_energy } else { energy_diff * 10.0 };
+        let norm_energy_diff = if long_energy > 0.01 {
+            energy_diff / long_energy
+        } else {
+            energy_diff * 10.0
+        };
 
-        let energy_transition = is_high_energy != self.was_high_energy && norm_energy_diff > threshold;
+        let energy_transition =
+            is_high_energy != self.was_high_energy && norm_energy_diff > threshold;
         let freq_transition = is_high_freq != self.was_high_freq && freq_diff > threshold;
 
         self.was_high_energy = is_high_energy;
