@@ -388,7 +388,11 @@ impl Visualization for DebugViz {
             // Use value-based color if numeric, otherwise use phosphor green
             // For normalized values, clamp to 0-1 for color purposes
             let color = if let Some(val) = numeric_value {
-                let display_val = if *is_normalized { val.clamp(0.0, 1.0) } else { *val };
+                let display_val = if *is_normalized {
+                    val.clamp(0.0, 1.0)
+                } else {
+                    *val
+                };
                 self.value_color(display_val, 255.0 * self.glow_intensity)
             } else {
                 self.phosphor_color(255.0 * self.glow_intensity)

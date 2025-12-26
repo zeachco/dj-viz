@@ -3,7 +3,7 @@ mod renderer;
 mod ui;
 mod utils;
 
-use audio::{AudioAnalyzer, AudioAnalysis, OutputCapture, SourcePipe};
+use audio::{AudioAnalysis, AudioAnalyzer, OutputCapture, SourcePipe};
 use nannou::prelude::*;
 use renderer::{FeedbackRenderer, Renderer, Resolution};
 use std::cell::RefCell;
@@ -100,6 +100,13 @@ fn model(app: &App) -> Model {
         prev_energy: 0.0,
         last_analysis: AudioAnalysis::default(),
     };
+
+    // Enable debug visualization if --debug or -d flag was passed
+    let args: Vec<String> = env::args().collect();
+    let debug_enabled = args.contains(&"--debug".to_string()) || args.contains(&"-d".to_string());
+    if debug_enabled {
+        model.renderer.toggle_debug_viz();
+    }
 
     // Ensure feedback renderer is properly sized to actual window dimensions
     // This handles cases where OS window manager resizes the window
@@ -211,7 +218,11 @@ fn resized(app: &App, model: &mut Model, size: Vec2) {
 }
 
 fn key_pressed(app: &App, model: &mut Model, key: Key) {
-    let action = parse_key(key, app.keys.mods.shift(), model.output_capture.search_active);
+    let action = parse_key(
+        key,
+        app.keys.mods.shift(),
+        model.output_capture.search_active,
+    );
 
     match action {
         Some(Action::Quit) => app.quit(),
