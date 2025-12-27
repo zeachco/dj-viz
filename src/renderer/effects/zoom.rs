@@ -27,12 +27,30 @@ struct Uniforms {
 }
 
 const FULLSCREEN_QUAD: [FeedbackVertex; 6] = [
-    FeedbackVertex { position: [-1.0, -1.0], tex_coords: [0.0, 1.0] },
-    FeedbackVertex { position: [ 1.0, -1.0], tex_coords: [1.0, 1.0] },
-    FeedbackVertex { position: [ 1.0,  1.0], tex_coords: [1.0, 0.0] },
-    FeedbackVertex { position: [-1.0, -1.0], tex_coords: [0.0, 1.0] },
-    FeedbackVertex { position: [ 1.0,  1.0], tex_coords: [1.0, 0.0] },
-    FeedbackVertex { position: [-1.0,  1.0], tex_coords: [0.0, 0.0] },
+    FeedbackVertex {
+        position: [-1.0, -1.0],
+        tex_coords: [0.0, 1.0],
+    },
+    FeedbackVertex {
+        position: [1.0, -1.0],
+        tex_coords: [1.0, 1.0],
+    },
+    FeedbackVertex {
+        position: [1.0, 1.0],
+        tex_coords: [1.0, 0.0],
+    },
+    FeedbackVertex {
+        position: [-1.0, -1.0],
+        tex_coords: [0.0, 1.0],
+    },
+    FeedbackVertex {
+        position: [1.0, 1.0],
+        tex_coords: [1.0, 0.0],
+    },
+    FeedbackVertex {
+        position: [-1.0, 1.0],
+        tex_coords: [0.0, 0.0],
+    },
 ];
 
 /// Feedback renderer using ping-pong textures for trail effects.
@@ -98,10 +116,7 @@ impl FeedbackRenderer {
             Self::create_texture(device, size),
             Self::create_texture(device, size),
         ];
-        let texture_views = [
-            textures[0].view().build(),
-            textures[1].view().build(),
-        ];
+        let texture_views = [textures[0].view().build(), textures[1].view().build()];
 
         // Create draw renderer for rendering nannou Draw to texture
         let draw_renderer = nannou::draw::RendererBuilder::new()
@@ -165,8 +180,20 @@ impl FeedbackRenderer {
 
         // Create bind groups for each texture
         let bind_groups = [
-            Self::create_bind_group(device, &bind_group_layout, &texture_views[0], &sampler, &uniform_buffer),
-            Self::create_bind_group(device, &bind_group_layout, &texture_views[1], &sampler, &uniform_buffer),
+            Self::create_bind_group(
+                device,
+                &bind_group_layout,
+                &texture_views[0],
+                &sampler,
+                &uniform_buffer,
+            ),
+            Self::create_bind_group(
+                device,
+                &bind_group_layout,
+                &texture_views[1],
+                &sampler,
+                &uniform_buffer,
+            ),
         ];
 
         // Create fullscreen quad buffer
@@ -179,7 +206,7 @@ impl FeedbackRenderer {
         // Load and create shader
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Feedback Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/feedback.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/feedback.wgsl").into()),
         });
 
         // Create pipeline layout
@@ -245,10 +272,8 @@ impl FeedbackRenderer {
         let overlay_textures: Vec<wgpu::Texture> = (0..MAX_OVERLAYS)
             .map(|_| Self::create_texture(device, size))
             .collect();
-        let overlay_texture_views: Vec<wgpu::TextureView> = overlay_textures
-            .iter()
-            .map(|t| t.view().build())
-            .collect();
+        let overlay_texture_views: Vec<wgpu::TextureView> =
+            overlay_textures.iter().map(|t| t.view().build()).collect();
         let overlay_draw_renderers: Vec<nannou::draw::Renderer> = overlay_textures
             .iter()
             .map(|t| {
@@ -260,7 +285,7 @@ impl FeedbackRenderer {
         // Create burn blend shader and pipeline
         let burn_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Burn Blend Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/burn_blend.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/burn_blend.wgsl").into()),
         });
 
         let burn_bind_group_layout =
@@ -444,8 +469,20 @@ impl FeedbackRenderer {
 
         // Recreate bind groups
         self.bind_groups = [
-            Self::create_bind_group(device, &self.bind_group_layout, &self.texture_views[0], &self.sampler, &self.uniform_buffer),
-            Self::create_bind_group(device, &self.bind_group_layout, &self.texture_views[1], &self.sampler, &self.uniform_buffer),
+            Self::create_bind_group(
+                device,
+                &self.bind_group_layout,
+                &self.texture_views[0],
+                &self.sampler,
+                &self.uniform_buffer,
+            ),
+            Self::create_bind_group(
+                device,
+                &self.bind_group_layout,
+                &self.texture_views[1],
+                &self.sampler,
+                &self.uniform_buffer,
+            ),
         ];
 
         // Recreate reshaper
@@ -558,8 +595,12 @@ impl FeedbackRenderer {
         }
 
         // Pass 2: Draw current primary visualization on top
-        self.draw_renderer
-            .render_to_texture(device, &mut encoder, primary_draw, &self.textures[curr_idx]);
+        self.draw_renderer.render_to_texture(
+            device,
+            &mut encoder,
+            primary_draw,
+            &self.textures[curr_idx],
+        );
 
         // Pass 3: Render each overlay and blend onto the result using ping-pong
         let num_overlays = overlay_draws.len().min(MAX_OVERLAYS);

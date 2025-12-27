@@ -36,7 +36,8 @@ impl LeafColor {
         let roll = rand::rng().random_range(0.0..1.0);
         if roll < 0.04 {
             LeafColor::Yellow
-        } else if roll < 0.19 { // 0.04 + 0.15 = 0.19
+        } else if roll < 0.19 {
+            // 0.04 + 0.15 = 0.19
             LeafColor::Orange
         } else {
             LeafColor::Red
@@ -45,9 +46,9 @@ impl LeafColor {
 
     fn to_rgb(&self) -> Rgb<u8> {
         match self {
-            LeafColor::Red => rgb(153, 0, 13),      // Blood red
-            LeafColor::Orange => rgb(255, 140, 0),  // Dark orange
-            LeafColor::Yellow => rgb(255, 215, 0),  // Gold yellow
+            LeafColor::Red => rgb(153, 0, 13),     // Blood red
+            LeafColor::Orange => rgb(255, 140, 0), // Dark orange
+            LeafColor::Yellow => rgb(255, 215, 0), // Gold yellow
         }
     }
 }
@@ -145,15 +146,15 @@ impl FractalTree {
 
         // Map bands to colors with 50% opacity
         match max_idx {
-            0 => rgba(0.9 + variation, 0.1, 0.1, 0.5),      // Sub-bass: Deep red
-            1 => rgba(1.0, 0.3 + variation, 0.0, 0.5),      // Bass: Orange
-            2 => rgba(1.0, 0.7 + variation, 0.0, 0.5),      // Low-mid: Yellow-orange
-            3 => rgba(0.9 + variation, 0.9, 0.2, 0.5),      // Mid: Yellow
-            4 => rgba(0.3 + variation, 0.9, 0.3, 0.5),      // Upper-mid: Green
-            5 => rgba(0.2, 0.7 + variation, 0.9, 0.5),      // Presence: Cyan
-            6 => rgba(0.3, 0.3, 0.9 + variation, 0.5),      // Brilliance: Blue
-            7 => rgba(0.7 + variation, 0.3, 0.9, 0.5),      // Air: Violet
-            _ => rgba(0.95, 0.92, 0.85, 0.5),               // Fallback: Eggshell
+            0 => rgba(0.9 + variation, 0.1, 0.1, 0.5), // Sub-bass: Deep red
+            1 => rgba(1.0, 0.3 + variation, 0.0, 0.5), // Bass: Orange
+            2 => rgba(1.0, 0.7 + variation, 0.0, 0.5), // Low-mid: Yellow-orange
+            3 => rgba(0.9 + variation, 0.9, 0.2, 0.5), // Mid: Yellow
+            4 => rgba(0.3 + variation, 0.9, 0.3, 0.5), // Upper-mid: Green
+            5 => rgba(0.2, 0.7 + variation, 0.9, 0.5), // Presence: Cyan
+            6 => rgba(0.3, 0.3, 0.9 + variation, 0.5), // Brilliance: Blue
+            7 => rgba(0.7 + variation, 0.3, 0.9, 0.5), // Air: Violet
+            _ => rgba(0.95, 0.92, 0.85, 0.5),          // Fallback: Eggshell
         }
     }
 
@@ -168,7 +169,11 @@ impl FractalTree {
     /// Spawn a new main branch from a random edge with a specific color
     fn spawn_main_branch_with_color(&mut self, color: Rgba) {
         // Count only main branches (not forks)
-        let main_branch_count = self.branches.iter().filter(|b| b.parent_id.is_none()).count();
+        let main_branch_count = self
+            .branches
+            .iter()
+            .filter(|b| b.parent_id.is_none())
+            .count();
         if main_branch_count >= MAX_BRANCHES {
             return;
         }
@@ -176,11 +181,7 @@ impl FractalTree {
         let bounds = self.bounds.get();
 
         // Use viewport utility to get random edge position outside bounds
-        let start_pos = get_random_edge_coord(
-            bounds.w(),
-            bounds.h(),
-            SPAWN_OFFSET,
-        );
+        let start_pos = get_random_edge_coord(bounds.w(), bounds.h(), SPAWN_OFFSET);
 
         let center = vec2(0.0, 0.0);
 
@@ -324,7 +325,7 @@ impl FractalTree {
             rgb_color.red as f32 / 255.0,
             rgb_color.green as f32 / 255.0,
             rgb_color.blue as f32 / 255.0,
-            0.9
+            0.9,
         );
         let base_size = 4.0 * leaf.size;
 
@@ -339,18 +340,10 @@ impl FractalTree {
         let right = pos + vec2(sin_a, -cos_a) * base_size * 0.5;
 
         // Draw the pointy leaf as triangles
-        draw.tri()
-            .points(tip, left, pos)
-            .color(color);
-        draw.tri()
-            .points(tip, pos, right)
-            .color(color);
-        draw.tri()
-            .points(left, bottom, pos)
-            .color(color);
-        draw.tri()
-            .points(pos, bottom, right)
-            .color(color);
+        draw.tri().points(tip, left, pos).color(color);
+        draw.tri().points(tip, pos, right).color(color);
+        draw.tri().points(left, bottom, pos).color(color);
+        draw.tri().points(pos, bottom, right).color(color);
     }
 }
 
@@ -514,7 +507,8 @@ impl Visualization for FractalTree {
         }
 
         // Remove leaves associated with removed branches
-        self.leaves.retain(|leaf| !branch_ids_to_remove.contains(&leaf.branch_id));
+        self.leaves
+            .retain(|leaf| !branch_ids_to_remove.contains(&leaf.branch_id));
 
         // Remove branches (in reverse order to maintain indices)
         for &(idx, _) in branches_to_remove.iter().rev() {
@@ -531,8 +525,14 @@ impl Visualization for FractalTree {
         });
 
         // Spawn new main branch if energy diff threshold reached and there's room
-        let main_branch_count = self.branches.iter().filter(|b| b.parent_id.is_none()).count();
-        if analysis.energy_diff.abs() >= ENERGY_THRESHOLD && self.last_energy_diff.abs() < ENERGY_THRESHOLD {
+        let main_branch_count = self
+            .branches
+            .iter()
+            .filter(|b| b.parent_id.is_none())
+            .count();
+        if analysis.energy_diff.abs() >= ENERGY_THRESHOLD
+            && self.last_energy_diff.abs() < ENERGY_THRESHOLD
+        {
             if main_branch_count < MAX_BRANCHES {
                 let color = Self::color_from_bands(&analysis.bands_normalized);
                 self.spawn_main_branch_with_color(color);

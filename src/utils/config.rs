@@ -80,8 +80,8 @@ pub struct DetectionConfig {
     pub punch_cooldown_frames: Option<u32>,
 
     // Break detection (silence-based)
-    pub break_silence_frames: Option<u32>,   // Frames without beat to trigger break
-    pub break_cooldown_frames: Option<u32>,  // Cooldown between break detections
+    pub break_silence_frames: Option<u32>, // Frames without beat to trigger break
+    pub break_cooldown_frames: Option<u32>, // Cooldown between break detections
 
     // Instrument detection
     pub complexity_threshold: Option<f32>,
