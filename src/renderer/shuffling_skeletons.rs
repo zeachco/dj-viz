@@ -41,6 +41,7 @@ enum DanceStyle {
 
 struct Skeleton {
     position: Vec2,
+    start_position: Vec2,
     velocity: Vec2,
     base_velocity: Vec2,
     scale: f32,
@@ -52,6 +53,7 @@ struct Skeleton {
     shuffle_step: i32,
     shuffle_transition: f32,
     shuffle_cooldown: u32,
+    trail_hue_rotation: f32,
 }
 
 impl Skeleton {
@@ -69,6 +71,7 @@ impl Skeleton {
 
         Self {
             position,
+            start_position: position,
             velocity,
             base_velocity: velocity,
             scale,
@@ -80,6 +83,7 @@ impl Skeleton {
             shuffle_step: 0,
             shuffle_transition: 1.0,
             shuffle_cooldown: 0,
+            trail_hue_rotation: 0.0,
         }
     }
 
@@ -185,6 +189,7 @@ impl Skeleton {
             };
             self.shuffle_transition = 0.0;
             self.shuffle_cooldown = SHUFFLE_COOLDOWN_FRAMES;
+            self.trail_hue_rotation += 100.0 / 360.0;
         }
 
         if self.shuffle_transition < 1.0 {
@@ -206,7 +211,58 @@ impl Skeleton {
             && self.position.y < bounds.top() + margin
     }
 
+    fn get_front_foot_world_position(&self) -> Vec2 {
+        let scale = self.scale;
+        let mirrored = matches!(self.dance_style, DanceStyle::ShuffleMirrored);
+        let mirror = if mirrored { -1.0 } else { 1.0 };
+
+        let bob_amount = if self.shuffle_transition < 0.5 {
+            self.shuffle_transition * 2.0
+        } else {
+            2.0 - (self.shuffle_transition * 2.0)
+        };
+        let body_y = bob_amount * 3.0 * scale;
+        let spine_bottom = body_y - 10.0 * scale;
+        let pelvis_y = spine_bottom;
+        let pelvis_depth = 5.0 * scale;
+        let leg_length = 20.0 * scale;
+        let max_step_offset = 12.0 * scale;
+
+        let (left_foot_offset, right_foot_offset) = match self.shuffle_step {
+            -1 => (max_step_offset * self.shuffle_transition, 0.0),
+            1 => (0.0, max_step_offset * self.shuffle_transition),
+            _ => (0.0, 0.0),
+        };
+
+        // Front foot is the one with the offset
+        let local_foot_pos = if self.shuffle_step == 1 {
+            vec2(
+                (pelvis_depth + right_foot_offset) * mirror,
+                pelvis_y - leg_length,
+            )
+        } else if self.shuffle_step == -1 {
+            vec2(
+                (-pelvis_depth + left_foot_offset) * mirror,
+                pelvis_y - leg_length,
+            )
+        } else {
+            vec2(pelvis_depth * mirror, pelvis_y - leg_length)
+        };
+
+        // Apply rotation and translate to world position
+        let cos_r = self.rotation.cos();
+        let sin_r = self.rotation.sin();
+        let rotated = vec2(
+            local_foot_pos.x * cos_r - local_foot_pos.y * sin_r,
+            local_foot_pos.x * sin_r + local_foot_pos.y * cos_r,
+        );
+        self.position + rotated
+    }
+
     fn draw(&self, draw: &Draw) {
+        // Draw trail line first (behind skeleton)
+        self.draw_trail(draw);
+
         let x = self.position.x;
         let y = self.position.y;
         let scale = self.scale;
@@ -215,6 +271,34 @@ impl Skeleton {
         let mirrored = matches!(self.dance_style, DanceStyle::ShuffleMirrored);
 
         self.draw_shuffle(&draw, 0.0, 0.0, scale, mirrored);
+    }
+
+    fn draw_trail(&self, draw: &Draw) {
+        let front_foot = self.get_front_foot_world_position();
+        let start = self.start_position;
+
+        // Get trail color with hue rotation
+        let trail_color = Self::shift_hue(self.bone_color, self.trail_hue_rotation);
+
+        // Draw tapered line from start (1px) to front foot (5px)
+        // Use multiple line segments to create taper effect
+        let segments = 20;
+        for i in 0..segments {
+            let t0 = i as f32 / segments as f32;
+            let t1 = (i + 1) as f32 / segments as f32;
+
+            let p0 = start.lerp(front_foot, t0);
+            let p1 = start.lerp(front_foot, t1);
+
+            // Weight goes from 1.0 to 5.0
+            let weight = 1.0 + (t0 + t1) / 2.0 * 4.0;
+
+            draw.line()
+                .start(pt2(p0.x, p0.y))
+                .end(pt2(p1.x, p1.y))
+                .weight(weight)
+                .color(trail_color);
+        }
     }
 
     fn draw_shuffle(&self, draw: &Draw, x: f32, y: f32, scale: f32, mirrored: bool) {
