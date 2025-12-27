@@ -31,7 +31,7 @@ pub struct AudioAnalysis {
 }
 ```
 
-## Implementation Template
+## Implementation Steps
 
 ### 1. Create the module file
 
@@ -50,15 +50,14 @@ use crate::audio::AudioAnalysis;
 // Use cfg! for debug/release performance tuning
 const NUM_PARTICLES: usize = if cfg!(debug_assertions) { 200 } else { 500 };
 
-pub struct <Name> {
+pub struct MyViz {
     // State: particles, rotations, smoothed values, frame counters
-    // Keep state minimal for performance
-    bass: f32,              // Smoothed bass for kick response
-    treble: f32,            // Smoothed treble for hi-hat response
-    rotation: f32,          // Rotation accumulator for spinning effects
-    hue_offset: f32,        // Color cycling (0-360 degrees)
-    particles: Vec<Particle>, // Particle systems work great for techno
-    frame_count: u32,       // For timing/pulsing effects
+    bass: f32,
+    treble: f32,
+    rotation: f32,
+    hue_offset: f32,
+    particles: Vec<Particle>,
+    frame_count: u32,
 }
 
 #[derive(Clone)]
@@ -66,31 +65,28 @@ struct Particle {
     position: Vec2,
     velocity: Vec2,
     age: f32,
-    // Add properties: hue, size, band_idx, etc.
 }
 
-impl <Name> {
-    pub fn new() -> Self {
-        let mut rng = rand::rng();
-        // Initialize particles/state
+impl Default for MyViz {
+    fn default() -> Self {
         Self {
             bass: 0.0,
             treble: 0.0,
             rotation: 0.0,
             hue_offset: 0.0,
-            particles: Vec::new(),
+            particles: Vec::with_capacity(NUM_PARTICLES),
             frame_count: 0,
         }
     }
 }
 
-impl Visualization for <Name> {
+impl Visualization for MyViz {
     fn update(&mut self, analysis: &AudioAnalysis) {
         self.frame_count += 1;
 
         // CRITICAL: Fast attack, slow decay for techno responsiveness
-        let attack = 0.7;  // Snap to peaks quickly
-        let decay = 0.15;  // Hold energy longer
+        let attack = 0.7;
+        let decay = 0.15;
 
         if analysis.bass > self.bass {
             self.bass = self.bass * (1.0 - attack) + analysis.bass * attack;
@@ -98,49 +94,64 @@ impl Visualization for <Name> {
             self.bass = self.bass * (1.0 - decay) + analysis.bass * decay;
         }
 
-        // Similar smoothing for treble (hi-hats/cymbals)
         self.treble = self.treble * 0.8 + analysis.treble * 0.2;
-
-        // Rotation drives hypnotic spinning (faster with energy)
         self.rotation += 0.01 + analysis.energy * 0.05;
-
-        // Color cycling for psychedelic effect
-        self.hue_offset += 0.5 + analysis.energy * 2.0;
-        if self.hue_offset > 360.0 { self.hue_offset -= 360.0; }
-
-        // Update particles, spawn based on energy, etc.
-        // Map particle behaviors to specific frequency bands
+        self.hue_offset = (self.hue_offset + 0.5 + analysis.energy * 2.0) % 360.0;
     }
 
     fn draw(&self, draw: &Draw, bounds: Rect) {
         let center = bounds.xy();
         let max_radius = bounds.w().min(bounds.h()) / 2.0;
 
-        // Draw geometry: radial patterns, tunnels, spirals
-        // Use center + polar coordinates (radius, angle) for hypnotic effects
-        // Alpha blending + feedback creates trails (handled by FeedbackRenderer)
+        // Draw geometry using center + polar coordinates
     }
 }
 ```
 
 ### 2. Export from renderer module
 
-In `src/renderer/mod.rs` (around line 6-17):
+In `src/renderer/mod.rs`, add the module declaration (around line 6-25):
 
 ```rust
-pub mod <name>;
-pub use <name>::<Name>;
+pub mod my_viz;
 ```
 
-### 3. Add to auto-cycling (optional)
-
-In `Renderer::with_cycling()` at `src/renderer/mod.rs:99-111`:
+And the public use (around line 74-93):
 
 ```rust
-Box::new(<Name>::new()),
+pub use my_viz::MyViz;
 ```
 
-Also update `visualization_name()` function (line 218-233) to include your viz name.
+### 3. Add to viz_enum! macro
+
+In `src/renderer/mod.rs`, add your visualization to the `viz_enum!` macro (around line 120-139):
+
+```rust
+viz_enum! {
+    SolarBeat,
+    SpectroRoad,
+    // ... existing visualizations ...
+    MyViz,  // Add here - that's it!
+}
+```
+
+The macro automatically:
+- Adds the enum variant `Viz::MyViz(MyViz)`
+- Includes it in `Viz::all()` for auto-cycling
+- Adds the name to `VIZ_NAMES` for display
+
+### 4. Add labels for layering (optional)
+
+Update `VIZ_LABELS` constant (around line 44-62) to categorize your visualization:
+
+```rust
+const VIZ_LABELS: &[&[VisLabel]] = &[
+    // ... existing labels ...
+    &[VisLabel::Organic, VisLabel::Intense], // MyViz
+];
+```
+
+Available labels: `Organic`, `Geometric`, `Cartoon`, `Glitchy`, `Intense`, `Retro`
 
 ## Creative Patterns for Techno/Psytrance
 
@@ -176,7 +187,7 @@ let jitter = rng.random_range(-self.treble..self.treble);
 for i in 0..NUM_RINGS {
     let t = i as f32 / NUM_RINGS as f32;
     let radius = max_radius * t * zoom;
-    let angle = self.rotation + t * TAU * 3.0; // 3 spirals
+    let angle = self.rotation + t * TAU * 3.0;
     let x = center.x + radius * angle.cos();
     let y = center.y + radius * angle.sin();
 }
@@ -184,19 +195,11 @@ for i in 0..NUM_RINGS {
 // Kaleidoscope symmetry (2, 3, 6, 8 segments)
 for seg in 0..6 {
     let base_angle = seg as f32 * TAU / 6.0 + self.rotation;
-    // Mirror/reflect geometry
 }
-
-// Infinite zoom/tunnel (use rotation + scale based on energy)
 ```
 
 ### Psychedelic Colors
 ```rust
-// HSV color cycling (0-360 hue)
-fn hsv_to_rgb(hue: f32, sat: f32, val: f32) -> (f32, f32, f32) {
-    // Convert HSV to RGB (see tesla_coil.rs:165-186)
-}
-
 // Map frequency bands to rainbow
 let band_hue = (band_idx as f32 / 8.0) * 360.0 + self.hue_offset;
 
@@ -204,19 +207,6 @@ let band_hue = (band_idx as f32 / 8.0) * 360.0 + self.hue_offset;
 let saturation = 0.6 + analysis.energy * 0.4;
 let brightness = 0.5 + self.bass * 0.5;
 ```
-
-### GPU Shader Integration (Advanced)
-
-Visualizations are composited with GPU shaders for feedback/burn effects:
-- `src/renderer/shaders/feedback.wgsl`: Trail effects via ping-pong buffers
-- `src/renderer/shaders/burn_blend.wgsl`: Screen-blend overlays
-- See `src/renderer/feedback.rs` for shader pipeline
-
-To use custom shaders, follow the pattern in `FeedbackRenderer`. WGSL shaders can do:
-- Distortion fields, chromatic aberration
-- Reaction-diffusion patterns
-- Fractal zoom effects
-- Ray marching for 3D tunnels
 
 ## Performance Optimization
 
@@ -232,35 +222,9 @@ Vec::with_capacity(NUM_PARTICLES)
 
 // Reuse particle pools instead of spawning
 if particle.age > MAX_AGE {
-    particle.respawn(); // Reset instead of remove/add
+    particle.respawn();
 }
 ```
-
-## Examples & Inspiration
-
-### Minimal spiral tunnel
-```
-/new-visualization spiral-tunnel
-```
-Rotating spiral rings that zoom/pulse with bass kicks. Simple but hypnotic.
-
-### Particle nebula
-```
-/new-visualization particle-nebula
-```
-Thousands of particles in orbital motion, colored by frequency band, swirling with mid energy.
-
-### Frequency mandala
-```
-/new-visualization freq-mandala
-```
-8-fold symmetry where each segment represents a frequency band. Rotates with energy.
-
-### Strobing grid
-```
-/new-visualization strobe-grid
-```
-Grid of cells that flash/pulse in sync with kick drums and hi-hats. Disorienting and intense.
 
 ## Reference Implementations
 
@@ -274,9 +238,9 @@ Study these for patterns:
 
 ## Music-Specific Tips
 
-**110-160 BPM**: 60fps means ~24-36 frames per kick at 120 BPM. Your smoothing attack/decay determines responsiveness.
+**110-160 BPM**: 60fps means ~24-36 frames per kick at 120 BPM.
 
-**Afro/Techno**: Emphasize steady 4/4 kick pattern (bass), repetitive patterns, subtle variations
+**Afro/Techno**: Emphasize steady 4/4 kick pattern, repetitive patterns, subtle variations
 **Psytrance**: Rapid bass line (130-150 BPM), high treble activity, chaotic/organic visuals
 **Hypnotic Techno**: Minimal, looping, trance-inducing geometry, slow color shifts
 
