@@ -10,14 +10,18 @@ pub mod dancing_skeletons;
 pub mod debug;
 pub mod feedback;
 pub mod fractal_tree;
+pub mod freq_mandala;
 pub mod gravity_flames;
 pub mod kaleidoscope;
 pub mod lava_blobs;
+pub mod particle_nebula;
 pub mod psychedelic_spiral;
 pub mod shuffling_skeletons;
 pub mod solar_beat;
 pub mod spectro_road;
+pub mod spiral_tunnel;
 pub mod squares;
+pub mod strobe_grid;
 pub mod tesla_coil;
 
 use nannou::prelude::*;
@@ -51,6 +55,10 @@ const VIZ_LABELS: &[&[VisLabel]] = &[
     &[VisLabel::Cartoon],                      // 11: DancingSkeletons
     &[VisLabel::Cartoon],                      // 12: ShufflingSkeletons
     &[VisLabel::Organic, VisLabel::Intense],   // 13: PsychedelicSpiral
+    &[VisLabel::Geometric, VisLabel::Intense], // 14: SpiralTunnel
+    &[VisLabel::Organic],                      // 15: ParticleNebula
+    &[VisLabel::Geometric],                    // 16: FreqMandala
+    &[VisLabel::Glitchy, VisLabel::Intense],   // 17: StrobeGrid
 ];
 
 const ALL_LABELS: &[VisLabel] = &[
@@ -69,14 +77,18 @@ pub use dancing_skeletons::DancingSkeletons;
 pub use debug::DebugViz;
 pub use feedback::FeedbackRenderer;
 pub use fractal_tree::FractalTree;
+pub use freq_mandala::FreqMandala;
 pub use gravity_flames::GravityFlames;
 pub use kaleidoscope::Kaleidoscope;
 pub use lava_blobs::LavaBlobs;
+pub use particle_nebula::ParticleNebula;
 pub use psychedelic_spiral::PsychedelicSpiral;
 pub use shuffling_skeletons::ShufflingSkeletons;
 pub use solar_beat::SolarBeat;
 pub use spectro_road::SpectroRoad;
+pub use spiral_tunnel::SpiralTunnel;
 pub use squares::Squares;
+pub use strobe_grid::StrobeGrid;
 pub use tesla_coil::TeslaCoil;
 
 /// Trait that all visualizations must implement
@@ -159,6 +171,10 @@ impl Renderer {
             Box::new(DancingSkeletons::new()),
             Box::new(ShufflingSkeletons::new()),
             Box::new(PsychedelicSpiral::new()),
+            Box::new(SpiralTunnel::new()),
+            Box::new(ParticleNebula::new()),
+            Box::new(FreqMandala::new()),
+            Box::new(StrobeGrid::new()),
         ];
 
         let mut rng = rand::rng();
@@ -292,6 +308,10 @@ impl Renderer {
             11 => "DancingSkeletons",
             12 => "ShufflingSkeletons",
             13 => "PsychedelicSpiral",
+            14 => "SpiralTunnel",
+            15 => "ParticleNebula",
+            16 => "FreqMandala",
+            17 => "StrobeGrid",
             _ => "Unknown",
         }
     }
