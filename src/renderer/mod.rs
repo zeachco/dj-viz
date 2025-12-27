@@ -37,20 +37,20 @@ pub enum VisLabel {
 
 /// Labels for each visualization (indexed same as visualizations vec)
 const VIZ_LABELS: &[&[VisLabel]] = &[
-    &[VisLabel::Geometric, VisLabel::Intense],  // 0: SolarBeat
-    &[VisLabel::Geometric, VisLabel::Retro],    // 1: SpectroRoad
-    &[VisLabel::Geometric],                     // 2: Squares
-    &[VisLabel::Glitchy, VisLabel::Intense],    // 3: TeslaCoil
-    &[VisLabel::Geometric],                     // 4: Kaleidoscope
-    &[VisLabel::Organic],                       // 5: LavaBlobs
-    &[VisLabel::Geometric, VisLabel::Retro],    // 6: BeatBars
-    &[VisLabel::Retro, VisLabel::Glitchy],      // 7: CrtPhosphor
-    &[VisLabel::Organic, VisLabel::Intense],    // 8: BlackHole
-    &[VisLabel::Organic, VisLabel::Intense],    // 9: GravityFlames
-    &[VisLabel::Organic],                       // 10: FractalTree
-    &[VisLabel::Cartoon],                       // 11: DancingSkeletons
-    &[VisLabel::Cartoon],                       // 12: ShufflingSkeletons
-    &[VisLabel::Organic, VisLabel::Intense],    // 13: PsychedelicSpiral
+    &[VisLabel::Geometric, VisLabel::Intense], // 0: SolarBeat
+    &[VisLabel::Geometric, VisLabel::Retro],   // 1: SpectroRoad
+    &[VisLabel::Geometric],                    // 2: Squares
+    &[VisLabel::Glitchy, VisLabel::Intense],   // 3: TeslaCoil
+    &[VisLabel::Geometric],                    // 4: Kaleidoscope
+    &[VisLabel::Organic],                      // 5: LavaBlobs
+    &[VisLabel::Geometric, VisLabel::Retro],   // 6: BeatBars
+    &[VisLabel::Retro, VisLabel::Glitchy],     // 7: CrtPhosphor
+    &[VisLabel::Organic, VisLabel::Intense],   // 8: BlackHole
+    &[VisLabel::Organic, VisLabel::Intense],   // 9: GravityFlames
+    &[VisLabel::Organic],                      // 10: FractalTree
+    &[VisLabel::Cartoon],                      // 11: DancingSkeletons
+    &[VisLabel::Cartoon],                      // 12: ShufflingSkeletons
+    &[VisLabel::Organic, VisLabel::Intense],   // 13: PsychedelicSpiral
 ];
 
 const ALL_LABELS: &[VisLabel] = &[
@@ -108,7 +108,7 @@ impl Resolution {
         Self {
             width: 1280,
             height: 720,
-            fullscreen: true,
+            fullscreen: false,
         }
     }
 
@@ -225,7 +225,10 @@ impl Renderer {
             selected_labels,
             selected.len(),
             Self::visualization_name(primary),
-            overlays.iter().map(|&i| Self::visualization_name(i)).collect::<Vec<_>>()
+            overlays
+                .iter()
+                .map(|&i| Self::visualization_name(i))
+                .collect::<Vec<_>>()
         );
 
         (primary, overlays)
@@ -369,6 +372,12 @@ impl Renderer {
     pub fn draw_debug_viz(&self, draw: &Draw, bounds: Rect) {
         if self.debug_viz_visible {
             self.debug_viz.draw(draw, bounds);
+        } else {
+            // Invisible draw to keep coordinate system synchronized with window size
+            draw.rect()
+                .x_y(bounds.x(), bounds.y())
+                .w_h(bounds.w(), bounds.h())
+                .color(srgba(0u8, 0u8, 0u8, 0u8));
         }
     }
 }
