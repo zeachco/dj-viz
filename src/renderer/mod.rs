@@ -24,6 +24,7 @@ pub mod squares;
 pub mod strobe_grid;
 pub mod tesla_coil;
 
+use enum_dispatch::enum_dispatch;
 use nannou::prelude::*;
 
 use crate::audio::AudioAnalysis;
@@ -91,7 +92,31 @@ pub use squares::Squares;
 pub use strobe_grid::StrobeGrid;
 pub use tesla_coil::TeslaCoil;
 
+/// Enum wrapping all visualization types for static dispatch
+#[enum_dispatch(Visualization)]
+pub enum Viz {
+    SolarBeat(SolarBeat),
+    SpectroRoad(SpectroRoad),
+    Squares(Squares),
+    TeslaCoil(TeslaCoil),
+    Kaleidoscope(Kaleidoscope),
+    LavaBlobs(LavaBlobs),
+    BeatBars(BeatBars),
+    CrtPhosphor(CrtPhosphor),
+    BlackHole(BlackHole),
+    GravityFlames(GravityFlames),
+    FractalTree(FractalTree),
+    DancingSkeletons(DancingSkeletons),
+    ShufflingSkeletons(ShufflingSkeletons),
+    PsychedelicSpiral(PsychedelicSpiral),
+    SpiralTunnel(SpiralTunnel),
+    ParticleNebula(ParticleNebula),
+    FreqMandala(FreqMandala),
+    StrobeGrid(StrobeGrid),
+}
+
 /// Trait that all visualizations must implement
+#[enum_dispatch]
 pub trait Visualization {
     /// Update the visualization state with pre-computed audio analysis
     fn update(&mut self, analysis: &AudioAnalysis);
@@ -138,7 +163,7 @@ const NOTIFICATION_FRAMES: u32 = 180; // ~3 seconds at 60fps
 
 /// Main renderer that manages the visualization pipeline and cycling
 pub struct Renderer {
-    visualizations: Vec<Box<dyn Visualization>>,
+    visualizations: Vec<Viz>,
     current_idx: usize,
     /// Indices of overlay visualizations to blend with burn effect (0-3)
     overlay_indices: Vec<usize>,
@@ -156,25 +181,25 @@ impl Renderer {
     /// Creates a renderer that cycles between visualizations
     /// when audio transitions are detected, starting with a random one
     pub fn with_cycling() -> Self {
-        let visualizations: Vec<Box<dyn Visualization>> = vec![
-            Box::new(SolarBeat::new()),
-            Box::new(SpectroRoad::new()),
-            Box::new(Squares::new()),
-            Box::new(TeslaCoil::new()),
-            Box::new(Kaleidoscope::new()),
-            Box::new(LavaBlobs::new()),
-            Box::new(BeatBars::new()),
-            Box::new(CrtPhosphor::new()),
-            Box::new(BlackHole::new()),
-            Box::new(GravityFlames::new()),
-            Box::new(FractalTree::new()),
-            Box::new(DancingSkeletons::new()),
-            Box::new(ShufflingSkeletons::new()),
-            Box::new(PsychedelicSpiral::new()),
-            Box::new(SpiralTunnel::new()),
-            Box::new(ParticleNebula::new()),
-            Box::new(FreqMandala::new()),
-            Box::new(StrobeGrid::new()),
+        let visualizations = vec![
+            Viz::SolarBeat(SolarBeat::new()),
+            Viz::SpectroRoad(SpectroRoad::new()),
+            Viz::Squares(Squares::new()),
+            Viz::TeslaCoil(TeslaCoil::new()),
+            Viz::Kaleidoscope(Kaleidoscope::new()),
+            Viz::LavaBlobs(LavaBlobs::new()),
+            Viz::BeatBars(BeatBars::new()),
+            Viz::CrtPhosphor(CrtPhosphor::new()),
+            Viz::BlackHole(BlackHole::new()),
+            Viz::GravityFlames(GravityFlames::new()),
+            Viz::FractalTree(FractalTree::new()),
+            Viz::DancingSkeletons(DancingSkeletons::new()),
+            Viz::ShufflingSkeletons(ShufflingSkeletons::new()),
+            Viz::PsychedelicSpiral(PsychedelicSpiral::new()),
+            Viz::SpiralTunnel(SpiralTunnel::new()),
+            Viz::ParticleNebula(ParticleNebula::new()),
+            Viz::FreqMandala(FreqMandala::new()),
+            Viz::StrobeGrid(StrobeGrid::new()),
         ];
 
         let mut rng = rand::rng();
