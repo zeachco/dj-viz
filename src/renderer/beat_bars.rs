@@ -39,8 +39,8 @@ pub struct BeatBars {
     energy: f32,
     /// Frame counter
     frame_count: u32,
-    /// Smoothed band values for bars
-    smoothed_bands: [f32; NUM_BANDS],
+    /// Band values from analyzer (no additional smoothing needed)
+    bands: [f32; NUM_BANDS],
     /// Head switch noise (bottom of frame distortion)
     head_switch_intensity: f32,
     /// Color shift amount
@@ -60,7 +60,7 @@ impl Default for BeatBars {
             treble: 0.0,
             energy: 0.0,
             frame_count: 0,
-            smoothed_bands: [0.0; NUM_BANDS],
+            bands: [0.0; NUM_BANDS],
             head_switch_intensity: 0.0,
             color_shift: 0.0,
         }
@@ -112,10 +112,8 @@ impl Visualization for BeatBars {
         self.treble = self.treble * 0.8 + analysis.treble * 0.2;
         self.energy = self.energy * 0.9 + analysis.energy * 0.1;
 
-        // Smooth band values
-        for i in 0..NUM_BANDS {
-            self.smoothed_bands[i] = self.smoothed_bands[i] * 0.7 + analysis.bands_normalized[i] * 0.3;
-        }
+        // Use analyzer's already-smoothed bands directly (no additional smoothing needed)
+        self.bands = analysis.bands;
 
         // Tracking error triggered by bass hits
         if analysis.bass > 0.6 && rng.random::<f32>() < 0.3 {
@@ -169,7 +167,7 @@ impl Visualization for BeatBars {
             let high_band = (low_band + 1).min(NUM_BANDS - 1);
             let t = band_pos - low_band as f32;
             let magnitude =
-                self.smoothed_bands[low_band] * (1.0 - t) + self.smoothed_bands[high_band] * t;
+                self.bands[low_band] * (1.0 - t) + self.bands[high_band] * t;
 
             let bar_height = magnitude * h * 0.8;
             let x = left + i as f32 * bar_width + bar_width / 2.0;

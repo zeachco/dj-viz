@@ -170,7 +170,7 @@ impl Resolution {
         Self {
             width: 1280,
             height: 720,
-            fullscreen: false,
+            fullscreen: true,
         }
     }
 
@@ -345,9 +345,9 @@ impl Renderer {
             energy_matches
                 .iter()
                 .filter(|&&i| {
-                    VIZ_LABELS
-                        .get(i)
-                        .map_or(false, |viz_labels| labels.iter().any(|l| viz_labels.contains(l)))
+                    VIZ_LABELS.get(i).map_or(false, |viz_labels| {
+                        labels.iter().any(|l| viz_labels.contains(l))
+                    })
                 })
                 .copied()
                 .collect()

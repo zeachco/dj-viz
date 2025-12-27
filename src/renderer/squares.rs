@@ -27,7 +27,8 @@ struct Square {
 /// Squares visualization with hue-cycling and pulsing borders
 pub struct Squares {
     squares: Vec<Square>,
-    smoothed_bands: [f32; NUM_BANDS],
+    // Band values from analyzer (no additional smoothing needed)
+    bands: [f32; NUM_BANDS],
 
     // Hue offset that cycles on high peaks
     hue_offset: f32,
@@ -51,7 +52,7 @@ impl Default for Squares {
     fn default() -> Self {
         Self {
             squares: Vec::with_capacity(MAX_SQUARES),
-            smoothed_bands: [0.0; NUM_BANDS],
+            bands: [0.0; NUM_BANDS],
             hue_offset: 0.0,
             frame_count: 0,
             translation_x: 0.0,
@@ -118,12 +119,8 @@ impl Visualization for Squares {
     fn update(&mut self, analysis: &AudioAnalysis) {
         self.frame_count = self.frame_count.wrapping_add(1);
 
-        // Smooth band values
-        for i in 0..NUM_BANDS {
-            let smoothing = 0.3;
-            self.smoothed_bands[i] =
-                self.smoothed_bands[i] * smoothing + analysis.bands_normalized[i] * (1.0 - smoothing);
-        }
+        // Use analyzer's already-smoothed bands directly (no additional smoothing needed)
+        self.bands = analysis.bands;
 
         // Detect high peak and cycle hue (use treble from analysis)
         let peak_now = analysis.treble > 0.5;
@@ -146,7 +143,7 @@ impl Visualization for Squares {
         for square in &mut self.squares {
             square.lifetime += 1.0;
             // Tilt rotation based on energy - subtle wobble following the beat
-            let band_energy = self.smoothed_bands
+            let band_energy = self.bands
                 .get(square.band_idx)
                 .copied()
                 .unwrap_or(0.0);
@@ -189,7 +186,7 @@ impl Visualization for Squares {
             let y = square.y * scale_y + self.translation_y;
 
             // Get magnitude for this square's band
-            let magnitude = self.smoothed_bands
+            let magnitude = self.bands
                 .get(square.band_idx)
                 .copied()
                 .unwrap_or(0.5);
