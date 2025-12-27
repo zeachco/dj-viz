@@ -174,8 +174,8 @@ impl Resolution {
         }
     }
 
-    pub fn current() -> Self {
-        if cfg!(debug_assertions) {
+    pub fn current(force_windowed: bool) -> Self {
+        if force_windowed || cfg!(debug_assertions) {
             Self::debug()
         } else {
             Self::release()

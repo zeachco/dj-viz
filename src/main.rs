@@ -43,7 +43,9 @@ struct Model {
 }
 
 fn model(app: &App) -> Model {
-    let resolution = Resolution::current();
+    let args: Vec<String> = env::args().collect();
+    let windowed = args.contains(&"--windowed".to_string()) || args.contains(&"-w".to_string());
+    let resolution = Resolution::current(windowed);
     app.set_exit_on_escape(false);
 
     let mut win = app
@@ -113,7 +115,6 @@ fn model(app: &App) -> Model {
     };
 
     // Enable debug visualization if --debug or -d flag was passed
-    let args: Vec<String> = env::args().collect();
     let debug_enabled = args.contains(&"--debug".to_string()) || args.contains(&"-d".to_string());
     if debug_enabled {
         model.renderer.toggle_debug_viz();
