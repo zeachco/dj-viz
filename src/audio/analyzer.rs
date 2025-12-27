@@ -7,6 +7,8 @@ use num_complex::Complex;
 use rustfft::{Fft, FftPlanner};
 use std::sync::Arc;
 
+use crate::utils::DetectionConfig;
+
 /// Number of frequency bands for visualization
 pub const NUM_BANDS: usize = 8;
 
@@ -162,22 +164,20 @@ pub struct AudioAnalyzer {
     energy_floor: f32,
     punch_cooldown: u32,
 
-    // Break detection state (16-step pattern buffer)
-    beat_pattern: [bool; 16],
-    beat_pattern_idx: usize,
-    last_pattern_energy: f32,
+    // Break detection state (silence-based)
+    frames_since_beat: u32,
+    break_cooldown: u32,
 
     // Spectral complexity tracking
     spectral_complexity: f32,
     prev_spectral_complexity: f32,
+
+    // Detection configuration (from config file)
+    detection_config: DetectionConfig,
 }
 
 impl AudioAnalyzer {
-    pub fn new() -> Self {
-        Self::with_sample_rate(44100.0)
-    }
-
-    pub fn with_sample_rate(sample_rate: f32) -> Self {
+    pub fn with_config(sample_rate: f32, detection_config: DetectionConfig) -> Self {
         let mut planner = FftPlanner::new();
         let fft = planner.plan_fft_forward(FFT_SIZE);
 
@@ -230,12 +230,13 @@ impl AudioAnalyzer {
             energy_floor: 0.0,
             punch_cooldown: 0,
             // Break detection
-            beat_pattern: [false; 16],
-            beat_pattern_idx: 0,
-            last_pattern_energy: 0.0,
+            frames_since_beat: 0,
+            break_cooldown: 0,
             // Spectral complexity
             spectral_complexity: 0.0,
             prev_spectral_complexity: 0.0,
+            // Detection config
+            detection_config,
         }
     }
 
@@ -554,15 +555,25 @@ impl AudioAnalyzer {
     fn detect_punch(&mut self, current_energy: f32) -> (bool, f32, f32) {
         const FLOOR_DECAY: f32 = 0.995; // Slowly drift floor up when quiet
         const FLOOR_ATTACK: f32 = 0.3; // Quickly drop floor on new lows
-        const PUNCH_THRESHOLD: f32 = 0.4; // Energy must jump by this much above floor
-        const FLOOR_THRESHOLD: f32 = 0.25; // Floor must be below this for "calm"
-        const PUNCH_COOLDOWN_FRAMES: u32 = 30; // ~0.5 seconds at 60fps
+        const FLOOR_SPIKE_ATTACK: f32 = 0.15; // Fast rise when energy spikes high
+        const SPIKE_THRESHOLD: f32 = 0.3; // Energy above floor to trigger fast rise
+
+        // Get thresholds from config
+        let floor_threshold = self.detection_config.punch_floor_threshold();
+        let punch_threshold = self.detection_config.punch_spike_threshold();
+        let min_rise_rate = self.detection_config.punch_rise_rate();
+        let cooldown_frames = self.detection_config.punch_cooldown_frames();
 
         // Update energy floor (adaptive minimum tracking)
+        let energy_gap = current_energy - self.energy_floor;
         if current_energy < self.energy_floor || self.energy_floor == 0.0 {
             // New low - quickly adopt it
             self.energy_floor =
                 self.energy_floor * (1.0 - FLOOR_ATTACK) + current_energy * FLOOR_ATTACK;
+        } else if energy_gap > SPIKE_THRESHOLD {
+            // Energy spiked high - quickly raise floor to follow
+            self.energy_floor =
+                self.energy_floor * (1.0 - FLOOR_SPIKE_ATTACK) + current_energy * FLOOR_SPIKE_ATTACK;
         } else {
             // Slowly drift floor up toward current
             self.energy_floor =
@@ -574,12 +585,12 @@ impl AudioAnalyzer {
 
         // Detect punch: floor was calm AND current energy spiked significantly
         let punch_detected = self.punch_cooldown == 0
-            && self.energy_floor < FLOOR_THRESHOLD
-            && (current_energy - self.energy_floor) > PUNCH_THRESHOLD
-            && rise_rate > 0.2; // Must be rising
+            && self.energy_floor < floor_threshold
+            && (current_energy - self.energy_floor) > punch_threshold
+            && rise_rate > min_rise_rate;
 
         if punch_detected {
-            self.punch_cooldown = PUNCH_COOLDOWN_FRAMES;
+            self.punch_cooldown = cooldown_frames;
         }
         if self.punch_cooldown > 0 {
             self.punch_cooldown -= 1;
@@ -588,43 +599,43 @@ impl AudioAnalyzer {
         (punch_detected, self.energy_floor, rise_rate)
     }
 
-    /// Detect break patterns: sparse beats or energy drop over 16-step window
+    /// Detect break patterns: silence (no beats) for extended period
     /// Returns whether a break was detected
-    fn detect_break(&mut self, is_beat: bool, current_energy: f32) -> bool {
-        const PATTERN_SIZE: usize = 16;
-        const BREAK_DENSITY_THRESHOLD: f32 = 0.25; // Less than 25% beats = break
-        const ENERGY_DROP_THRESHOLD: f32 = 0.3; // Energy dropped 30% = break
+    fn detect_break(&mut self, is_beat: bool, _current_energy: f32) -> bool {
+        // Get thresholds from config
+        let silence_threshold = self.detection_config.break_silence_frames();
+        let cooldown_threshold = self.detection_config.break_cooldown_frames();
 
-        // Record beat presence in pattern buffer
-        self.beat_pattern[self.beat_pattern_idx] = is_beat;
-        self.beat_pattern_idx = (self.beat_pattern_idx + 1) % PATTERN_SIZE;
-
-        // Only check when we complete a pattern cycle
-        if self.beat_pattern_idx != 0 {
-            return false;
+        // Decrement cooldown
+        if self.break_cooldown > 0 {
+            self.break_cooldown -= 1;
         }
 
-        // Count beats in pattern
-        let beat_count = self.beat_pattern.iter().filter(|&&b| b).count();
-        let beat_density = beat_count as f32 / PATTERN_SIZE as f32;
+        // Track frames since last beat
+        if is_beat {
+            self.frames_since_beat = 0;
+        } else {
+            self.frames_since_beat += 1;
+        }
 
-        // Detect break: sudden drop in beat density or energy
-        let energy_dropped = self.last_pattern_energy > 0.1
-            && current_energy < self.last_pattern_energy * (1.0 - ENERGY_DROP_THRESHOLD);
-        let pattern_sparse = beat_density < BREAK_DENSITY_THRESHOLD;
+        // Break detected when no beat for extended period and not in cooldown
+        if self.frames_since_beat >= silence_threshold && self.break_cooldown == 0 {
+            self.break_cooldown = cooldown_threshold;
+            self.frames_since_beat = 0; // Reset to avoid immediate re-trigger
+            return true;
+        }
 
-        self.last_pattern_energy = current_energy;
-
-        // Break detected when pattern becomes sparse OR energy drops suddenly
-        energy_dropped || pattern_sparse
+        false
     }
 
     /// Detect instrument changes via spectral complexity
     /// Returns (instrument_added, instrument_removed, spectral_centroid)
     fn detect_instrument_changes(&mut self, bands: &[f32; NUM_BANDS]) -> (bool, bool, f32) {
-        const COMPLEXITY_THRESHOLD: f32 = 0.15; // Band must be above this to count as active
-        const CHANGE_RATIO: f32 = 1.5; // Complexity must change by 50%
         const SMOOTHING: f32 = 0.85;
+
+        // Get thresholds from config
+        let complexity_threshold = self.detection_config.complexity_threshold();
+        let change_ratio = self.detection_config.complexity_change_ratio();
 
         // Calculate spectral complexity (weighted count of active bands)
         let mut active_weight = 0.0f32;
@@ -632,7 +643,7 @@ impl AudioAnalyzer {
         let mut weighted_freq_sum = 0.0f32;
 
         for (i, &band_energy) in bands.iter().enumerate() {
-            if band_energy > COMPLEXITY_THRESHOLD {
+            if band_energy > complexity_threshold {
                 active_weight += band_energy; // Weight by energy, not just count
             }
             total_energy += band_energy;
@@ -659,8 +670,8 @@ impl AudioAnalyzer {
             1.0
         };
 
-        let instrument_added = complexity_ratio > CHANGE_RATIO;
-        let instrument_removed = complexity_ratio < 1.0 / CHANGE_RATIO;
+        let instrument_added = complexity_ratio > change_ratio;
+        let instrument_removed = complexity_ratio < 1.0 / change_ratio;
 
         self.prev_spectral_complexity = self.spectral_complexity;
 

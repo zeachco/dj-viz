@@ -6,6 +6,7 @@ mod utils;
 use audio::{AudioAnalysis, AudioAnalyzer, OutputCapture, SourcePipe};
 use nannou::prelude::*;
 use renderer::{FeedbackRenderer, Renderer, Resolution};
+use utils::Config;
 use std::cell::RefCell;
 use std::env;
 use nannou::winit::event::WindowEvent;
@@ -93,10 +94,15 @@ fn model(app: &App) -> Model {
         None
     };
 
+    // Load config and extract values for audio analyzer and renderer
+    let config = Config::load();
+    let detection_config = config.detection();
+    let viz_energy_ranges = config.viz_energy_ranges();
+
     let mut model = Model {
         source: SourcePipe::new(),
-        analyzer: AudioAnalyzer::new(),
-        renderer: Renderer::with_cycling(),
+        analyzer: AudioAnalyzer::with_config(44100.0, detection_config.clone()),
+        renderer: Renderer::with_cycling(detection_config, viz_energy_ranges),
         output_capture: OutputCapture::new(),
         feedback: RefCell::new(feedback),
         screensaver_inhibitor,

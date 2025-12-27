@@ -29,6 +29,7 @@ use nannou::prelude::*;
 use rand::Rng;
 
 use crate::audio::AudioAnalysis;
+use crate::utils::DetectionConfig;
 
 /// Labels for categorizing visualizations that can be layered together
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -70,29 +71,6 @@ const ALL_LABELS: &[VisLabel] = &[
     VisLabel::Glitchy,
     VisLabel::Intense,
     VisLabel::Retro,
-];
-
-/// Energy ranges [min, max] for each visualization (indexed same as viz enum)
-/// Values are 0.0-1.0 representing preferred energy level for the visualization
-const VIZ_ENERGY_RANGES: &[[f32; 2]] = &[
-    [0.5, 1.0], // 0: SolarBeat - high energy radial burst
-    [0.3, 0.8], // 1: SpectroRoad - medium, works across range
-    [0.2, 0.6], // 2: Squares - calmer geometric
-    [0.6, 1.0], // 3: TeslaCoil - high energy lightning
-    [0.3, 0.7], // 4: Kaleidoscope - medium
-    [0.2, 0.5], // 5: LavaBlobs - calm organic
-    [0.4, 0.9], // 6: BeatBars - responds well to beats
-    [0.3, 0.7], // 7: CrtPhosphor - medium retro
-    [0.5, 1.0], // 8: BlackHole - intense
-    [0.6, 1.0], // 9: GravityFlames - high energy
-    [0.1, 0.4], // 10: FractalTree - calm organic growth
-    [0.3, 0.7], // 11: DancingSkeletons - fun at medium
-    [0.2, 0.6], // 12: ShufflingSkeletons - calmer cartoon
-    [0.5, 1.0], // 13: PsychedelicSpiral - intense
-    [0.6, 1.0], // 14: SpiralTunnel - high energy geometric
-    [0.1, 0.5], // 15: ParticleNebula - calm ambient
-    [0.3, 0.7], // 16: FreqMandala - medium geometric
-    [0.7, 1.0], // 17: StrobeGrid - very high energy only
 ];
 
 pub use beat_bars::BeatBars;
@@ -205,7 +183,6 @@ impl Resolution {
     }
 }
 
-const COOLDOWN_FRAMES: u32 = 45; // ~0.75 seconds at 60fps (more responsive)
 const NOTIFICATION_FRAMES: u32 = 180; // ~3 seconds at 60fps
 
 /// Main renderer that manages the visualization pipeline and cycling
@@ -224,12 +201,19 @@ pub struct Renderer {
     pub debug_viz_visible: bool,
     /// Smoothed energy level for selection decisions
     tracked_energy: f32,
+    /// Detection configuration (from config file)
+    detection_config: DetectionConfig,
+    /// Energy ranges for visualizations (from config file)
+    viz_energy_ranges: Vec<[f32; 2]>,
 }
 
 impl Renderer {
     /// Creates a renderer that cycles between visualizations
     /// when audio transitions are detected, starting with a random one
-    pub fn with_cycling() -> Self {
+    pub fn with_cycling(
+        detection_config: DetectionConfig,
+        viz_energy_ranges: Vec<[f32; 2]>,
+    ) -> Self {
         let visualizations = Viz::all();
 
         let mut rng = rand::rng();
@@ -247,6 +231,8 @@ impl Renderer {
             debug_viz: DebugViz::new(),
             debug_viz_visible: false,
             tracked_energy: 0.5,
+            detection_config,
+            viz_energy_ranges,
         }
     }
 
@@ -315,8 +301,8 @@ impl Renderer {
     }
 
     /// Returns indices of visualizations suitable for the given energy level
-    fn vizs_for_energy(energy: f32) -> Vec<usize> {
-        VIZ_ENERGY_RANGES
+    fn vizs_for_energy(&self, energy: f32) -> Vec<usize> {
+        self.viz_energy_ranges
             .iter()
             .enumerate()
             .filter(|(_, range)| energy >= range[0] && energy <= range[1])
@@ -327,16 +313,18 @@ impl Renderer {
     /// Select visualizations matching both energy level and optionally labels
     /// Returns (primary_idx, overlay_indices)
     fn select_for_energy_and_labels(
+        &self,
         rng: &mut impl rand::Rng,
         energy: f32,
         preferred_labels: Option<&[VisLabel]>,
     ) -> (usize, Vec<usize>) {
         // First filter by energy
-        let energy_matches = Self::vizs_for_energy(energy);
+        let energy_matches = self.vizs_for_energy(energy);
 
         if energy_matches.is_empty() {
             // Fallback: find closest energy match
-            let closest = VIZ_ENERGY_RANGES
+            let closest = self
+                .viz_energy_ranges
                 .iter()
                 .enumerate()
                 .min_by(|(_, a), (_, b)| {
@@ -412,7 +400,7 @@ impl Renderer {
     pub fn cycle_next(&mut self, _analysis: &AudioAnalysis) {
         if self.visualizations.len() > 1 {
             self.select_new_visualizations();
-            self.cooldown = COOLDOWN_FRAMES;
+            self.cooldown = self.detection_config.cooldown_frames();
             self.locked = false; // Space unlocks and resumes auto-cycling
         }
     }
@@ -426,7 +414,7 @@ impl Renderer {
         }
         self.current_idx = idx;
         self.overlay_indices.clear(); // No overlays when locked to single viz
-        self.cooldown = COOLDOWN_FRAMES;
+        self.cooldown = self.detection_config.cooldown_frames();
         self.locked = true;
 
         let name = Self::visualization_name(idx);
@@ -457,15 +445,17 @@ impl Renderer {
         // Skip auto-switching if locked or in cooldown
         if !self.locked && self.cooldown == 0 && self.visualizations.len() > 1 {
             let mut rng = rand::rng();
+            let cooldown_frames = self.detection_config.cooldown_frames();
+            let energy_drop_rate = self.detection_config.energy_drop_rate();
 
             // Priority 1: Punch detection - major visual change
             if analysis.punch_detected {
                 let (primary, overlays) =
-                    Self::select_for_energy_and_labels(&mut rng, analysis.energy, None);
+                    self.select_for_energy_and_labels(&mut rng, analysis.energy, None);
                 let overlay_count = overlays.len();
                 self.current_idx = primary;
                 self.overlay_indices = overlays;
-                self.cooldown = COOLDOWN_FRAMES * 2; // Longer cooldown for punches
+                self.cooldown = cooldown_frames * 2; // Longer cooldown for punches
                 println!(
                     "PUNCH! Switched to {} with {} overlays",
                     Self::visualization_name(primary),
@@ -474,14 +464,14 @@ impl Renderer {
             }
             // Priority 2: Instrument added - add overlay
             else if analysis.instrument_added && self.overlay_indices.len() < 3 {
-                let candidates = Self::vizs_for_energy(analysis.energy);
+                let candidates = self.vizs_for_energy(analysis.energy);
                 if !candidates.is_empty() {
                     let new_overlay = candidates[rng.random_range(0..candidates.len())];
                     if !self.overlay_indices.contains(&new_overlay)
                         && new_overlay != self.current_idx
                     {
                         self.overlay_indices.push(new_overlay);
-                        self.cooldown = COOLDOWN_FRAMES / 2;
+                        self.cooldown = cooldown_frames / 2;
                         println!(
                             "Instrument added: +overlay {}",
                             Self::visualization_name(new_overlay)
@@ -491,7 +481,7 @@ impl Renderer {
             }
             // Priority 3: Instrument removed OR energy dropping - remove overlay and maybe switch primary
             else if analysis.instrument_removed
-                || (analysis.rise_rate < -0.15 && self.tracked_energy < 0.4)
+                || (analysis.rise_rate < energy_drop_rate && self.tracked_energy < 0.4)
             {
                 if !self.overlay_indices.is_empty() {
                     let removed = self.overlay_indices.pop();
@@ -503,10 +493,10 @@ impl Renderer {
 
                 // If energy is low, also switch primary to calmer viz
                 if self.tracked_energy < 0.3 {
-                    let calm_vizs = Self::vizs_for_energy(self.tracked_energy);
+                    let calm_vizs = self.vizs_for_energy(self.tracked_energy);
                     if !calm_vizs.is_empty() && !calm_vizs.contains(&self.current_idx) {
                         self.current_idx = calm_vizs[rng.random_range(0..calm_vizs.len())];
-                        self.cooldown = COOLDOWN_FRAMES;
+                        self.cooldown = cooldown_frames;
                         println!(
                             "Energy low: switched to calmer {}",
                             Self::visualization_name(self.current_idx)
@@ -517,19 +507,19 @@ impl Renderer {
             // Priority 4: Break detected - dramatic change
             else if analysis.break_detected {
                 let (primary, overlays) =
-                    Self::select_for_energy_and_labels(&mut rng, self.tracked_energy, None);
+                    self.select_for_energy_and_labels(&mut rng, self.tracked_energy, None);
                 self.current_idx = primary;
                 self.overlay_indices = overlays;
-                self.cooldown = COOLDOWN_FRAMES;
+                self.cooldown = cooldown_frames;
                 println!("Break! Switched to {}", Self::visualization_name(primary));
             }
             // Priority 5: Regular transition - existing behavior but energy-aware
             else if analysis.transition_detected {
                 let (primary, overlays) =
-                    Self::select_for_energy_and_labels(&mut rng, self.tracked_energy, None);
+                    self.select_for_energy_and_labels(&mut rng, self.tracked_energy, None);
                 self.current_idx = primary;
                 self.overlay_indices = overlays;
-                self.cooldown = COOLDOWN_FRAMES;
+                self.cooldown = cooldown_frames;
             }
         }
 
