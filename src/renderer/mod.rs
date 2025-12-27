@@ -75,7 +75,6 @@ const ALL_LABELS: &[VisLabel] = &[
 ];
 
 pub use beat_bars::BeatBars;
-pub use scripted::ScriptManager;
 pub use black_hole::BlackHole;
 pub use crt_phosphor::CrtPhosphor;
 pub use dancing_skeletons::DancingSkeletons;
@@ -88,6 +87,7 @@ pub use kaleidoscope::Kaleidoscope;
 pub use lava_blobs::LavaBlobs;
 pub use particle_nebula::ParticleNebula;
 pub use psychedelic_spiral::PsychedelicSpiral;
+pub use scripted::ScriptManager;
 pub use shuffling_skeletons::ShufflingSkeletons;
 pub use solar_beat::SolarBeat;
 pub use spectro_road::SpectroRoad;
@@ -377,16 +377,16 @@ impl Renderer {
         let primary = selected[0];
         let overlays = selected[1..].to_vec();
 
-        println!(
-            "Energy-based selection (energy={:.2}) → {} (primary: {}, overlays: {:?})",
-            energy,
-            selected.len(),
-            Self::visualization_name(primary),
-            overlays
-                .iter()
-                .map(|&i| Self::visualization_name(i))
-                .collect::<Vec<_>>()
-        );
+        // println!(
+        //     "Energy-based selection (energy={:.2}) → {} (primary: {}, overlays: {:?})",
+        //     energy,
+        //     selected.len(),
+        //     Self::visualization_name(primary),
+        //     overlays
+        //         .iter()
+        //         .map(|&i| Self::visualization_name(i))
+        //         .collect::<Vec<_>>()
+        // );
 
         (primary, overlays)
     }
@@ -513,7 +513,7 @@ impl Renderer {
                 self.current_idx = primary;
                 self.overlay_indices = overlays;
                 self.cooldown = cooldown_frames;
-                println!("Break! Switched to {}", Self::visualization_name(primary));
+                // println!("Break! Switched to {}", Self::visualization_name(primary));
             }
             // Priority 5: Regular transition - existing behavior but energy-aware
             else if analysis.transition_detected {

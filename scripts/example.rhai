@@ -72,10 +72,8 @@
 // ============================================================================
 
 // Initialize persistent state on first frame
-if frame == 1 {
-    let hue_offset = 0.0;
-    let particles = [];
-}
+let hue_offset = 0.0;
+let particles = [];
 
 // Cycle hue on musical transitions
 if transition_detected {
