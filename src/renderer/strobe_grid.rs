@@ -9,8 +9,8 @@ use rand::Rng;
 
 use crate::audio::AudioAnalysis;
 
-/// Grid size
-const GRID_SIZE: usize = if cfg!(debug_assertions) { 8 } else { 12 };
+/// Grid size (odd number for true center cell)
+const GRID_SIZE: usize = if cfg!(debug_assertions) { 9 } else { 13 };
 
 #[derive(Clone)]
 struct Cell {
@@ -163,8 +163,8 @@ impl Visualization for StrobeGrid {
                 }
 
                 // Calculate distance for wave effect
-                let cx = GRID_SIZE as f32 / 2.0;
-                let cy = GRID_SIZE as f32 / 2.0;
+                let cx = (GRID_SIZE / 2) as f32;
+                let cy = (GRID_SIZE / 2) as f32;
                 let dist = ((x as f32 - cx).powi(2) + (y as f32 - cy).powi(2)).sqrt();
                 let wave = (dist * 0.5 - self.wave_phase).sin() * 0.5 + 0.5;
 
