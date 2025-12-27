@@ -54,6 +54,26 @@ pub struct AudioAnalysis {
     pub last_mark: u32,
     /// Whether a visualization change should be triggered (drastic change + high energy)
     pub viz_change_triggered: bool,
+
+    // Punch detection (calm-before-spike)
+    /// Whether a punch (calm-to-high energy spike) was detected
+    pub punch_detected: bool,
+    /// Tracked minimum energy floor for punch detection
+    pub energy_floor: f32,
+    /// Rate at which energy is rising (positive = rising)
+    pub rise_rate: f32,
+
+    // Beat subdivision detection
+    /// Whether a break/subdivision pattern was detected
+    pub break_detected: bool,
+
+    // Instrument/complexity detection
+    /// Whether spectral complexity increased (instrument added)
+    pub instrument_added: bool,
+    /// Whether spectral complexity decreased (instrument removed)
+    pub instrument_removed: bool,
+    /// Weighted average frequency (spectral centroid in Hz)
+    pub spectral_centroid: f32,
 }
 
 impl Default for AudioAnalysis {
@@ -74,6 +94,16 @@ impl Default for AudioAnalysis {
             dominant_band: 0,
             last_mark: 600, // Start at max (10 seconds at 60fps)
             viz_change_triggered: false,
+            // Punch detection
+            punch_detected: false,
+            energy_floor: 0.0,
+            rise_rate: 0.0,
+            // Break detection
+            break_detected: false,
+            // Instrument detection
+            instrument_added: false,
+            instrument_removed: false,
+            spectral_centroid: 1000.0,
         }
     }
 }
@@ -127,6 +157,19 @@ pub struct AudioAnalyzer {
     // Frame skipping for performance
     frame_count: u32,
     last_analysis: AudioAnalysis,
+
+    // Punch detection state
+    energy_floor: f32,
+    punch_cooldown: u32,
+
+    // Break detection state (16-step pattern buffer)
+    beat_pattern: [bool; 16],
+    beat_pattern_idx: usize,
+    last_pattern_energy: f32,
+
+    // Spectral complexity tracking
+    spectral_complexity: f32,
+    prev_spectral_complexity: f32,
 }
 
 impl AudioAnalyzer {
@@ -183,6 +226,16 @@ impl AudioAnalyzer {
             reference_bands: [0.0; NUM_BANDS],
             frame_count: 0,
             last_analysis: AudioAnalysis::default(),
+            // Punch detection
+            energy_floor: 0.0,
+            punch_cooldown: 0,
+            // Break detection
+            beat_pattern: [false; 16],
+            beat_pattern_idx: 0,
+            last_pattern_energy: 0.0,
+            // Spectral complexity
+            spectral_complexity: 0.0,
+            prev_spectral_complexity: 0.0,
         }
     }
 
@@ -383,6 +436,13 @@ impl AudioAnalyzer {
         let viz_change_triggered =
             zoom_direction_shift && self.smoothed_energy >= VIZ_CHANGE_ENERGY_THRESHOLD;
 
+        // New detection methods
+        let (punch_detected, energy_floor, rise_rate) = self.detect_punch(self.smoothed_energy);
+        let break_detected = self.detect_break(transition_detected, self.smoothed_energy);
+        let bands_copy = self.smoothed_bands; // Copy to avoid borrow conflict
+        let (instrument_added, instrument_removed, spectral_centroid) =
+            self.detect_instrument_changes(&bands_copy);
+
         // Compute aggregate values
         let bass = (self.smoothed_bands[0] + self.smoothed_bands[1]) / 2.0;
         let mids = (self.smoothed_bands[2] + self.smoothed_bands[3] + self.smoothed_bands[4]) / 3.0;
@@ -417,6 +477,14 @@ impl AudioAnalyzer {
             dominant_band: self.dominant_band,
             last_mark: self.last_mark,
             viz_change_triggered,
+            // New detection fields
+            punch_detected,
+            energy_floor,
+            rise_rate,
+            break_detected,
+            instrument_added,
+            instrument_removed,
+            spectral_centroid,
         };
 
         self.last_analysis.clone()
@@ -479,5 +547,123 @@ impl AudioAnalyzer {
             sum += history[idx];
         }
         sum / frames as f32
+    }
+
+    /// Detect punch (calm-before-spike): energy was low then suddenly spiked
+    /// Returns (punch_detected, energy_floor, rise_rate)
+    fn detect_punch(&mut self, current_energy: f32) -> (bool, f32, f32) {
+        const FLOOR_DECAY: f32 = 0.995; // Slowly drift floor up when quiet
+        const FLOOR_ATTACK: f32 = 0.3; // Quickly drop floor on new lows
+        const PUNCH_THRESHOLD: f32 = 0.4; // Energy must jump by this much above floor
+        const FLOOR_THRESHOLD: f32 = 0.25; // Floor must be below this for "calm"
+        const PUNCH_COOLDOWN_FRAMES: u32 = 30; // ~0.5 seconds at 60fps
+
+        // Update energy floor (adaptive minimum tracking)
+        if current_energy < self.energy_floor || self.energy_floor == 0.0 {
+            // New low - quickly adopt it
+            self.energy_floor =
+                self.energy_floor * (1.0 - FLOOR_ATTACK) + current_energy * FLOOR_ATTACK;
+        } else {
+            // Slowly drift floor up toward current
+            self.energy_floor =
+                self.energy_floor * FLOOR_DECAY + current_energy * (1.0 - FLOOR_DECAY);
+        }
+
+        // Calculate rise rate (slope of energy change)
+        let rise_rate = current_energy - self.lagged_energy;
+
+        // Detect punch: floor was calm AND current energy spiked significantly
+        let punch_detected = self.punch_cooldown == 0
+            && self.energy_floor < FLOOR_THRESHOLD
+            && (current_energy - self.energy_floor) > PUNCH_THRESHOLD
+            && rise_rate > 0.2; // Must be rising
+
+        if punch_detected {
+            self.punch_cooldown = PUNCH_COOLDOWN_FRAMES;
+        }
+        if self.punch_cooldown > 0 {
+            self.punch_cooldown -= 1;
+        }
+
+        (punch_detected, self.energy_floor, rise_rate)
+    }
+
+    /// Detect break patterns: sparse beats or energy drop over 16-step window
+    /// Returns whether a break was detected
+    fn detect_break(&mut self, is_beat: bool, current_energy: f32) -> bool {
+        const PATTERN_SIZE: usize = 16;
+        const BREAK_DENSITY_THRESHOLD: f32 = 0.25; // Less than 25% beats = break
+        const ENERGY_DROP_THRESHOLD: f32 = 0.3; // Energy dropped 30% = break
+
+        // Record beat presence in pattern buffer
+        self.beat_pattern[self.beat_pattern_idx] = is_beat;
+        self.beat_pattern_idx = (self.beat_pattern_idx + 1) % PATTERN_SIZE;
+
+        // Only check when we complete a pattern cycle
+        if self.beat_pattern_idx != 0 {
+            return false;
+        }
+
+        // Count beats in pattern
+        let beat_count = self.beat_pattern.iter().filter(|&&b| b).count();
+        let beat_density = beat_count as f32 / PATTERN_SIZE as f32;
+
+        // Detect break: sudden drop in beat density or energy
+        let energy_dropped = self.last_pattern_energy > 0.1
+            && current_energy < self.last_pattern_energy * (1.0 - ENERGY_DROP_THRESHOLD);
+        let pattern_sparse = beat_density < BREAK_DENSITY_THRESHOLD;
+
+        self.last_pattern_energy = current_energy;
+
+        // Break detected when pattern becomes sparse OR energy drops suddenly
+        energy_dropped || pattern_sparse
+    }
+
+    /// Detect instrument changes via spectral complexity
+    /// Returns (instrument_added, instrument_removed, spectral_centroid)
+    fn detect_instrument_changes(&mut self, bands: &[f32; NUM_BANDS]) -> (bool, bool, f32) {
+        const COMPLEXITY_THRESHOLD: f32 = 0.15; // Band must be above this to count as active
+        const CHANGE_RATIO: f32 = 1.5; // Complexity must change by 50%
+        const SMOOTHING: f32 = 0.85;
+
+        // Calculate spectral complexity (weighted count of active bands)
+        let mut active_weight = 0.0f32;
+        let mut total_energy = 0.0f32;
+        let mut weighted_freq_sum = 0.0f32;
+
+        for (i, &band_energy) in bands.iter().enumerate() {
+            if band_energy > COMPLEXITY_THRESHOLD {
+                active_weight += band_energy; // Weight by energy, not just count
+            }
+            total_energy += band_energy;
+            // Spectral centroid: weighted average frequency
+            let band_center_freq = (BAND_EDGES[i] + BAND_EDGES[i + 1]) / 2.0;
+            weighted_freq_sum += band_center_freq * band_energy;
+        }
+
+        let spectral_centroid = if total_energy > 0.01 {
+            weighted_freq_sum / total_energy
+        } else {
+            1000.0 // Default to mid frequency
+        };
+
+        // Smooth complexity
+        let new_complexity = active_weight;
+        self.spectral_complexity =
+            self.spectral_complexity * SMOOTHING + new_complexity * (1.0 - SMOOTHING);
+
+        // Detect changes
+        let complexity_ratio = if self.prev_spectral_complexity > 0.1 {
+            self.spectral_complexity / self.prev_spectral_complexity
+        } else {
+            1.0
+        };
+
+        let instrument_added = complexity_ratio > CHANGE_RATIO;
+        let instrument_removed = complexity_ratio < 1.0 / CHANGE_RATIO;
+
+        self.prev_spectral_complexity = self.spectral_complexity;
+
+        (instrument_added, instrument_removed, spectral_centroid)
     }
 }

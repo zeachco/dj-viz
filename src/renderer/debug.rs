@@ -40,6 +40,14 @@ pub struct DebugViz {
     display_band_mins: [f32; 8],
     /// Tracked max values for each band (from analyzer)
     display_band_maxs: [f32; 8],
+    // New detection signals
+    display_punch: bool,
+    display_energy_floor: f32,
+    display_rise_rate: f32,
+    display_break: bool,
+    display_instrument_added: bool,
+    display_instrument_removed: bool,
+    display_spectral_centroid: f32,
     /// Phosphor glow intensity
     glow_intensity: f32,
     /// Last frame time for FPS calculation
@@ -68,6 +76,13 @@ impl DebugViz {
             display_viz_change: false,
             display_band_mins: [0.0; 8],
             display_band_maxs: [0.0; 8],
+            display_punch: false,
+            display_energy_floor: 0.0,
+            display_rise_rate: 0.0,
+            display_break: false,
+            display_instrument_added: false,
+            display_instrument_removed: false,
+            display_spectral_centroid: 1000.0,
             glow_intensity: 0.5,
             last_frame_time: Instant::now(),
             display_fps: 0.0,
@@ -184,6 +199,14 @@ impl Visualization for DebugViz {
             self.display_dominant_band = analysis.dominant_band;
             self.display_last_mark = analysis.last_mark;
             self.display_viz_change = analysis.viz_change_triggered;
+            // New detection signals
+            self.display_punch = analysis.punch_detected;
+            self.display_energy_floor = analysis.energy_floor;
+            self.display_rise_rate = analysis.rise_rate;
+            self.display_break = analysis.break_detected;
+            self.display_instrument_added = analysis.instrument_added;
+            self.display_instrument_removed = analysis.instrument_removed;
+            self.display_spectral_centroid = analysis.spectral_centroid;
         }
 
         // Update tracked min/max for each band with slow decay towards current value
@@ -379,6 +402,80 @@ impl Visualization for DebugViz {
             col3_x,
             start_y - row_spacing * 7.0,
             None, // Boolean, no indicator
+            false,
+        ));
+
+        // Column 5: New detection signals (below column 4)
+        text_data.push((
+            "Punch".to_string(),
+            if self.display_punch {
+                "TRUE".to_string()
+            } else {
+                "FALSE".to_string()
+            },
+            col4_x,
+            start_y - row_spacing * 4.0,
+            None, // Boolean, no indicator
+            false,
+        ));
+        text_data.push((
+            "Energy Floor".to_string(),
+            Self::format_value(self.display_energy_floor),
+            col4_x,
+            start_y - row_spacing * 5.0,
+            Some(self.display_energy_floor),
+            false,
+        ));
+        text_data.push((
+            "Rise Rate".to_string(),
+            Self::format_value(self.display_rise_rate),
+            col4_x,
+            start_y - row_spacing * 6.0,
+            Some((self.display_rise_rate + 1.0) / 2.0), // Map -1..1 to 0..1
+            false,
+        ));
+        text_data.push((
+            "Break".to_string(),
+            if self.display_break {
+                "TRUE".to_string()
+            } else {
+                "FALSE".to_string()
+            },
+            col4_x,
+            start_y - row_spacing * 7.0,
+            None, // Boolean
+            false,
+        ));
+        text_data.push((
+            "Inst Add".to_string(),
+            if self.display_instrument_added {
+                "TRUE".to_string()
+            } else {
+                "FALSE".to_string()
+            },
+            col3_x,
+            start_y - row_spacing * 8.0,
+            None, // Boolean
+            false,
+        ));
+        text_data.push((
+            "Inst Rem".to_string(),
+            if self.display_instrument_removed {
+                "TRUE".to_string()
+            } else {
+                "FALSE".to_string()
+            },
+            col4_x,
+            start_y - row_spacing * 8.0,
+            None, // Boolean
+            false,
+        ));
+        text_data.push((
+            "Centroid".to_string(),
+            format!("{:.0} Hz", self.display_spectral_centroid),
+            col3_x,
+            start_y - row_spacing * 9.0,
+            None, // No indicator for centroid
             false,
         ));
 
