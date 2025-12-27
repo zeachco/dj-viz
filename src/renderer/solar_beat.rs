@@ -11,7 +11,8 @@ use crate::audio::{AudioAnalysis, NUM_BANDS};
 const NUM_LINES: usize = if cfg!(debug_assertions) { 64 } else { 128 };
 
 pub struct SolarBeat {
-    smoothed_magnitudes: Vec<f32>,
+    // Current band magnitudes (from analyzer, no additional smoothing)
+    magnitudes: Vec<f32>,
     // Rotation offset for psychedelic effect
     rotation_offset: f32,
 }
@@ -19,7 +20,7 @@ pub struct SolarBeat {
 impl Default for SolarBeat {
     fn default() -> Self {
         Self {
-            smoothed_magnitudes: vec![0.0; NUM_LINES],
+            magnitudes: vec![0.0; NUM_LINES],
             rotation_offset: 0.0,
         }
     }
@@ -29,27 +30,19 @@ impl SolarBeat {
     fn magnitude_to_color(mag: f32) -> Srgba<u8> {
         let mag = mag.clamp(0.0, 1.0);
 
-        // Vibrant color palette inspired by WMP: cyan -> magenta -> yellow -> white
-        let (r, g, b) = if mag < 0.2 {
-            // Deep blue to cyan
-            let t = mag / 0.2;
-            (0.0, t * 0.6, 0.3 + t * 0.7)
-        } else if mag < 0.4 {
+        // Simplified color gradient: blue -> cyan -> magenta -> yellow -> white
+        let (r, g, b) = if mag < 0.33 {
+            // Blue to cyan
+            let t = mag / 0.33;
+            (0.0, t * 0.8, 0.4 + t * 0.6)
+        } else if mag < 0.66 {
             // Cyan to magenta
-            let t = (mag - 0.2) / 0.2;
-            (t * 0.8, 0.6 - t * 0.2, 1.0 - t * 0.3)
-        } else if mag < 0.6 {
-            // Magenta to pink/white
-            let t = (mag - 0.4) / 0.2;
-            (0.8 + t * 0.2, 0.4 + t * 0.4, 0.7 + t * 0.3)
-        } else if mag < 0.8 {
-            // Pink to yellow
-            let t = (mag - 0.6) / 0.2;
-            (1.0, 0.8 + t * 0.2, 1.0 - t * 0.6)
+            let t = (mag - 0.33) / 0.33;
+            (t * 0.9, 0.8 - t * 0.3, 1.0 - t * 0.2)
         } else {
-            // Yellow to white hot
-            let t = (mag - 0.8) / 0.2;
-            (1.0, 1.0, 0.4 + t * 0.6)
+            // Magenta to yellow/white
+            let t = (mag - 0.66) / 0.34;
+            (0.9 + t * 0.1, 0.5 + t * 0.5, 0.8 - t * 0.4 + t * 0.6)
         };
 
         srgba(
@@ -84,14 +77,10 @@ impl SolarBeat {
 
 impl Visualization for SolarBeat {
     fn update(&mut self, analysis: &AudioAnalysis) {
-        // Calculate smoothed magnitudes for each line from band data
+        // Use analyzer's already-smoothed bands directly (no additional smoothing needed)
+        // The analyzer already does sophisticated attack/decay smoothing
         for i in 0..NUM_LINES {
-            let band_value = self.line_to_band_value(i, &analysis.bands_normalized);
-
-            // Light smoothing over time
-            let smoothing = 0.2;
-            self.smoothed_magnitudes[i] =
-                self.smoothed_magnitudes[i] * smoothing + band_value * (1.0 - smoothing);
+            self.magnitudes[i] = self.line_to_band_value(i, &analysis.bands);
         }
 
         // Update rotation based on bass energy for psychedelic movement
@@ -111,7 +100,7 @@ impl Visualization for SolarBeat {
             center_x,
             center_y,
             max_radius,
-            &self.smoothed_magnitudes,
+            &self.magnitudes,
             self.rotation_offset,
         );
     }
