@@ -49,8 +49,8 @@ pub struct CrtPhosphor {
     lissajous_phase: f32,
 }
 
-impl CrtPhosphor {
-    pub fn new() -> Self {
+impl Default for CrtPhosphor {
+    fn default() -> Self {
         Self {
             waveform_history: vec![Vec::new(); TRAIL_LENGTH],
             current_waveform: Vec::with_capacity(WAVEFORM_POINTS),
@@ -66,7 +66,9 @@ impl CrtPhosphor {
             lissajous_phase: 0.0,
         }
     }
+}
 
+impl CrtPhosphor {
     fn hsv_to_rgb(hue: f32, saturation: f32, value: f32) -> (f32, f32, f32) {
         let hue = hue % 360.0;
         let c = value * saturation;

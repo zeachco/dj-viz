@@ -92,27 +92,50 @@ pub use squares::Squares;
 pub use strobe_grid::StrobeGrid;
 pub use tesla_coil::TeslaCoil;
 
-/// Enum wrapping all visualization types for static dispatch
-#[enum_dispatch(Visualization)]
-pub enum Viz {
-    SolarBeat(SolarBeat),
-    SpectroRoad(SpectroRoad),
-    Squares(Squares),
-    TeslaCoil(TeslaCoil),
-    Kaleidoscope(Kaleidoscope),
-    LavaBlobs(LavaBlobs),
-    BeatBars(BeatBars),
-    CrtPhosphor(CrtPhosphor),
-    BlackHole(BlackHole),
-    GravityFlames(GravityFlames),
-    FractalTree(FractalTree),
-    DancingSkeletons(DancingSkeletons),
-    ShufflingSkeletons(ShufflingSkeletons),
-    PsychedelicSpiral(PsychedelicSpiral),
-    SpiralTunnel(SpiralTunnel),
-    ParticleNebula(ParticleNebula),
-    FreqMandala(FreqMandala),
-    StrobeGrid(StrobeGrid),
+/// Generates the Viz enum, constructor, and name lookup
+macro_rules! viz_enum {
+    ($($name:ident),* $(,)?) => {
+        #[enum_dispatch(Visualization)]
+        pub enum Viz {
+            $($name($name),)*
+        }
+
+        /// Names of all visualizations (indexed same as Viz::all())
+        pub const VIZ_NAMES: &[&str] = &[$(stringify!($name),)*];
+
+        impl Viz {
+            /// Returns a Vec containing one instance of each visualization
+            pub fn all() -> Vec<Viz> {
+                vec![$(Viz::$name($name::default()),)*]
+            }
+
+            /// Get visualization name by index
+            pub fn name(idx: usize) -> &'static str {
+                VIZ_NAMES.get(idx).copied().unwrap_or("Unknown")
+            }
+        }
+    };
+}
+
+viz_enum! {
+    SolarBeat,
+    SpectroRoad,
+    Squares,
+    TeslaCoil,
+    Kaleidoscope,
+    LavaBlobs,
+    BeatBars,
+    CrtPhosphor,
+    BlackHole,
+    GravityFlames,
+    FractalTree,
+    DancingSkeletons,
+    ShufflingSkeletons,
+    PsychedelicSpiral,
+    SpiralTunnel,
+    ParticleNebula,
+    FreqMandala,
+    StrobeGrid,
 }
 
 /// Trait that all visualizations must implement
@@ -181,26 +204,7 @@ impl Renderer {
     /// Creates a renderer that cycles between visualizations
     /// when audio transitions are detected, starting with a random one
     pub fn with_cycling() -> Self {
-        let visualizations = vec![
-            Viz::SolarBeat(SolarBeat::new()),
-            Viz::SpectroRoad(SpectroRoad::new()),
-            Viz::Squares(Squares::new()),
-            Viz::TeslaCoil(TeslaCoil::new()),
-            Viz::Kaleidoscope(Kaleidoscope::new()),
-            Viz::LavaBlobs(LavaBlobs::new()),
-            Viz::BeatBars(BeatBars::new()),
-            Viz::CrtPhosphor(CrtPhosphor::new()),
-            Viz::BlackHole(BlackHole::new()),
-            Viz::GravityFlames(GravityFlames::new()),
-            Viz::FractalTree(FractalTree::new()),
-            Viz::DancingSkeletons(DancingSkeletons::new()),
-            Viz::ShufflingSkeletons(ShufflingSkeletons::new()),
-            Viz::PsychedelicSpiral(PsychedelicSpiral::new()),
-            Viz::SpiralTunnel(SpiralTunnel::new()),
-            Viz::ParticleNebula(ParticleNebula::new()),
-            Viz::FreqMandala(FreqMandala::new()),
-            Viz::StrobeGrid(StrobeGrid::new()),
-        ];
+        let visualizations = Viz::all();
 
         let mut rng = rand::rng();
         // Select initial visualizations by matching labels
@@ -318,27 +322,7 @@ impl Renderer {
 
     /// Get visualization name by index
     fn visualization_name(idx: usize) -> &'static str {
-        match idx {
-            0 => "SolarBeat",
-            1 => "SpectroRoad",
-            2 => "Squares",
-            3 => "TeslaCoil",
-            4 => "Kaleidoscope",
-            5 => "LavaBlobs",
-            6 => "BeatBars",
-            7 => "CrtPhosphor",
-            8 => "BlackHole",
-            9 => "GravityFlames",
-            10 => "FractalTree",
-            11 => "DancingSkeletons",
-            12 => "ShufflingSkeletons",
-            13 => "PsychedelicSpiral",
-            14 => "SpiralTunnel",
-            15 => "ParticleNebula",
-            16 => "FreqMandala",
-            17 => "StrobeGrid",
-            _ => "Unknown",
-        }
+        Viz::name(idx)
     }
 
     pub fn update(&mut self, analysis: &AudioAnalysis) {

@@ -48,8 +48,8 @@ pub struct LavaBlobs {
     bounds_h: f32,
 }
 
-impl LavaBlobs {
-    pub fn new() -> Self {
+impl Default for LavaBlobs {
+    fn default() -> Self {
         let mut rng = rand::rng();
 
         let blobs: Vec<Blob> = (0..NUM_BLOBS)
@@ -78,7 +78,9 @@ impl LavaBlobs {
             bounds_h: 300.0,
         }
     }
+}
 
+impl LavaBlobs {
     /// Calculate metaball field value at a point
     fn field_value(&self, x: f32, y: f32) -> f32 {
         let mut sum = 0.0;

@@ -47,8 +47,8 @@ pub struct BeatBars {
     color_shift: f32,
 }
 
-impl BeatBars {
-    pub fn new() -> Self {
+impl Default for BeatBars {
+    fn default() -> Self {
         Self {
             tracking_offset: 0.0,
             target_tracking: 0.0,
@@ -65,7 +65,9 @@ impl BeatBars {
             color_shift: 0.0,
         }
     }
+}
 
+impl BeatBars {
     /// Generate VHS-style color (slightly washed out, shifted)
     fn vhs_color(&self, base_hue: f32, saturation: f32, value: f32) -> (f32, f32, f32) {
         // VHS has limited color accuracy - reduce saturation, shift colors

@@ -30,8 +30,8 @@ pub struct FreqMandala {
     frame_count: u32,
 }
 
-impl FreqMandala {
-    pub fn new() -> Self {
+impl Default for FreqMandala {
+    fn default() -> Self {
         Self {
             rotation: 0.0,
             bands: [0.0; 8],
@@ -42,7 +42,9 @@ impl FreqMandala {
             frame_count: 0,
         }
     }
+}
 
+impl FreqMandala {
     fn hsv_to_rgba(hue: f32, saturation: f32, value: f32, alpha: f32) -> Srgba<u8> {
         let hue = hue % 360.0;
         let c = value * saturation;

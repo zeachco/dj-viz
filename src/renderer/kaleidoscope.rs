@@ -47,8 +47,8 @@ pub struct Kaleidoscope {
     frame_count: u32,
 }
 
-impl Kaleidoscope {
-    pub fn new() -> Self {
+impl Default for Kaleidoscope {
+    fn default() -> Self {
         let mut rng = rand::rng();
         let segment_angle = std::f32::consts::TAU / NUM_SEGMENTS as f32;
 
@@ -73,7 +73,9 @@ impl Kaleidoscope {
             frame_count: 0,
         }
     }
+}
 
+impl Kaleidoscope {
     fn hsv_to_rgba(hue: f32, saturation: f32, value: f32, alpha: f32) -> Srgba<u8> {
         let hue = hue % 360.0;
         let c = value * saturation;

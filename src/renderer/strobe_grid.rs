@@ -45,8 +45,8 @@ pub struct StrobeGrid {
     wave_phase: f32,
 }
 
-impl StrobeGrid {
-    pub fn new() -> Self {
+impl Default for StrobeGrid {
+    fn default() -> Self {
         let mut rng = rand::rng();
 
         let cells: Vec<Vec<Cell>> = (0..GRID_SIZE)
@@ -86,7 +86,9 @@ impl StrobeGrid {
             wave_phase: 0.0,
         }
     }
+}
 
+impl StrobeGrid {
     fn hsv_to_rgba(hue: f32, saturation: f32, value: f32, alpha: f32) -> Srgba<u8> {
         let hue = hue % 360.0;
         let c = value * saturation;

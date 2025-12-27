@@ -47,8 +47,8 @@ pub struct Squares {
     peak_detected: bool,
 }
 
-impl Squares {
-    pub fn new() -> Self {
+impl Default for Squares {
+    fn default() -> Self {
         Self {
             squares: Vec::with_capacity(MAX_SQUARES),
             smoothed_bands: [0.0; NUM_BANDS],
@@ -61,7 +61,9 @@ impl Squares {
             peak_detected: false,
         }
     }
+}
 
+impl Squares {
     /// Convert band index to hue angle (0-1)
     fn band_to_hue(&self, band_idx: usize) -> f32 {
         let normalized = band_idx as f32 / NUM_BANDS as f32;

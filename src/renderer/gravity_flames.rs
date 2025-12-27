@@ -56,9 +56,8 @@ pub struct GravityFlames {
     frame_count: u32,
 }
 
-impl GravityFlames {
-    /// Create a new GravityFlames visualization
-    pub fn new() -> Self {
+impl Default for GravityFlames {
+    fn default() -> Self {
         Self {
             particles: Vec::with_capacity(NUM_PARTICLES),
             base_angle_rotation: 0.0,
@@ -67,7 +66,9 @@ impl GravityFlames {
             frame_count: 0,
         }
     }
+}
 
+impl GravityFlames {
     /// Map temperature (0-1) to flame color gradient
     fn temperature_to_color(&self, temp: f32) -> Srgba<u8> {
         let temp = temp.clamp(0.0, 1.0);

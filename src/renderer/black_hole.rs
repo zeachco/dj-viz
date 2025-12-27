@@ -67,8 +67,8 @@ pub struct BlackHole {
     hue_shift: f32,
 }
 
-impl BlackHole {
-    pub fn new() -> Self {
+impl Default for BlackHole {
+    fn default() -> Self {
         let mut rng = rand::rng();
 
         // Initialize particles in disk
@@ -111,7 +111,9 @@ impl BlackHole {
             hue_shift: 0.0,
         }
     }
+}
 
+impl BlackHole {
     /// Convert temperature (0-1) to blackbody-ish color
     fn temperature_to_color(&self, temp: f32, brightness: f32) -> Srgba<u8> {
         // Hot (1.0) = white/blue, Cool (0.0) = red/orange

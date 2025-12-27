@@ -497,13 +497,15 @@ pub struct ShufflingSkeletons {
     skeletons: Vec<Skeleton>,
 }
 
-impl ShufflingSkeletons {
-    pub fn new() -> Self {
+impl Default for ShufflingSkeletons {
+    fn default() -> Self {
         Self {
             skeletons: Vec::new(),
         }
     }
+}
 
+impl ShufflingSkeletons {
     fn try_spawn_skeleton(&mut self, analysis: &AudioAnalysis) {
         if self.skeletons.len() >= MAX_SKELETONS {
             return;

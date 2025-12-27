@@ -36,8 +36,8 @@ pub struct PsychedelicSpiral {
     frame_count: u32,
 }
 
-impl PsychedelicSpiral {
-    pub fn new() -> Self {
+impl Default for PsychedelicSpiral {
+    fn default() -> Self {
         Self {
             rotation: 0.0,
             depth_offset: 0.0,
@@ -50,7 +50,9 @@ impl PsychedelicSpiral {
             frame_count: 0,
         }
     }
+}
 
+impl PsychedelicSpiral {
     fn hsv_to_rgba(hue: f32, saturation: f32, value: f32, alpha: f32) -> Srgba<u8> {
         let hue = hue % 360.0;
         let c = value * saturation;

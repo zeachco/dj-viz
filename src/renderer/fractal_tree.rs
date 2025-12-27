@@ -104,6 +104,27 @@ pub struct FractalTree {
     bounds: Cell<Rect>,
 }
 
+impl Default for FractalTree {
+    fn default() -> Self {
+        // Default bounds (will be updated on first draw)
+        let default_bounds = Rect::from_w_h(800.0, 600.0);
+
+        let mut tree = Self {
+            branches: Vec::new(),
+            leaves: Vec::new(),
+            last_energy_diff: 0.0,
+            next_branch_id: 0,
+            last_energy_turn_triggered: false,
+            bounds: Cell::new(default_bounds),
+        };
+
+        // Start with one branch from random edge (default color)
+        tree.spawn_main_branch_with_color(rgba(0.95, 0.92, 0.85, 0.5));
+
+        tree
+    }
+}
+
 impl FractalTree {
     /// Get color based on the dominant frequency band
     /// Maps frequency bands to colors: low=warm, mid=green/yellow, high=cool
@@ -134,25 +155,6 @@ impl FractalTree {
             7 => rgba(0.7 + variation, 0.3, 0.9, 0.5),      // Air: Violet
             _ => rgba(0.95, 0.92, 0.85, 0.5),               // Fallback: Eggshell
         }
-    }
-
-    pub fn new() -> Self {
-        // Default bounds (will be updated on first draw)
-        let default_bounds = Rect::from_w_h(800.0, 600.0);
-
-        let mut tree = Self {
-            branches: Vec::new(),
-            leaves: Vec::new(),
-            last_energy_diff: 0.0,
-            next_branch_id: 0,
-            last_energy_turn_triggered: false,
-            bounds: Cell::new(default_bounds),
-        };
-
-        // Start with one branch from random edge (default color)
-        tree.spawn_main_branch_with_color(rgba(0.95, 0.92, 0.85, 0.5));
-
-        tree
     }
 
     /// Calculate spawn radius (corner-to-center distance) from bounds

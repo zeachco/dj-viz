@@ -16,14 +16,16 @@ pub struct SolarBeat {
     rotation_offset: f32,
 }
 
-impl SolarBeat {
-    pub fn new() -> Self {
+impl Default for SolarBeat {
+    fn default() -> Self {
         Self {
             smoothed_magnitudes: vec![0.0; NUM_LINES],
             rotation_offset: 0.0,
         }
     }
+}
 
+impl SolarBeat {
     fn magnitude_to_color(mag: f32) -> Srgba<u8> {
         let mag = mag.clamp(0.0, 1.0);
 

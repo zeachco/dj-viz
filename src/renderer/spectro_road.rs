@@ -31,8 +31,8 @@ pub struct SpectroRoad {
     shift_counter: u32,
 }
 
-impl SpectroRoad {
-    pub fn new() -> Self {
+impl Default for SpectroRoad {
+    fn default() -> Self {
         Self {
             history: vec![[0.0; NUM_BANDS]; HISTORY_SIZE],
             shake_x: 0.0,
@@ -44,7 +44,9 @@ impl SpectroRoad {
             shift_counter: 0,
         }
     }
+}
 
+impl SpectroRoad {
     /// Interpolate from NUM_BANDS to a specific display bin
     fn interpolate_band(bands: &[f32; NUM_BANDS], bin_idx: usize) -> f32 {
         // Map display bin to band position with log-like scaling for bass emphasis

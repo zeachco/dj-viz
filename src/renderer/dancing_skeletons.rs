@@ -566,13 +566,15 @@ pub struct DancingSkeletons {
     skeletons: Vec<Skeleton>,
 }
 
-impl DancingSkeletons {
-    pub fn new() -> Self {
+impl Default for DancingSkeletons {
+    fn default() -> Self {
         Self {
             skeletons: Vec::new(),
         }
     }
+}
 
+impl DancingSkeletons {
     fn try_spawn_skeleton(&mut self, analysis: &AudioAnalysis) {
         if self.skeletons.len() >= MAX_SKELETONS {
             return;

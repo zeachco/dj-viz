@@ -57,8 +57,8 @@ pub struct TeslaCoil {
     treble: f32,
 }
 
-impl TeslaCoil {
-    pub fn new() -> Self {
+impl Default for TeslaCoil {
+    fn default() -> Self {
         Self {
             bass: 0.0,
             mids: 0.0,
@@ -73,7 +73,9 @@ impl TeslaCoil {
             treble: 0.0,
         }
     }
+}
 
+impl TeslaCoil {
     /// Generate a lightning bolt from center toward an angle
     fn generate_bolt(&self, center: Vec2, max_radius: f32, angle: f32, intensity: f32) -> LightningBolt {
         let mut rng = rand::rng();
