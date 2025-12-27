@@ -7,7 +7,7 @@
 use nannou::prelude::*;
 use nannou::wgpu;
 
-const MAX_OVERLAYS: usize = 3;
+const MAX_OVERLAYS: usize = 9;
 
 /// Vertex for fullscreen quad
 #[repr(C)]
