@@ -11,12 +11,56 @@ Pre-built binaries are available for download in [Releases](../../releases) - cl
 - **dj-viz-linux-x86_64** - Linux (x86_64)
 - **dj-viz-linux-aarch64** - Raspberry Pi 4+ (64-bit)
 - **dj-viz-linux-armv7** - Raspberry Pi 3/Zero (32-bit)
+- **dj-viz-windows-x86_64** - Windows (x86_64)
 
 ## Build from source
+
+### Native build
 
 ```bash
 cargo build --release
 ```
+
+### Platform-specific dependencies
+
+**Linux (Debian/Ubuntu):**
+```bash
+sudo apt-get install libasound2-dev libudev-dev pkg-config
+```
+
+**Windows:**
+No additional dependencies required (WASAPI is built-in).
+
+**macOS:**
+No additional dependencies required (CoreAudio is built-in).
+
+### Cross-compilation
+
+Use [cross](https://github.com/cross-rs/cross) for cross-compiling to other platforms:
+
+```bash
+# Install cross
+cargo install cross --git https://github.com/cross-rs/cross
+
+# Build for Raspberry Pi 4+ (64-bit)
+cross build --release --target aarch64-unknown-linux-gnu
+
+# Build for Raspberry Pi 3/Zero (32-bit)
+cross build --release --target armv7-unknown-linux-gnueabihf
+```
+
+Binaries will be in `target/<target>/release/dj-viz`.
+
+### All supported targets
+
+| Target | Platform | Build command |
+|--------|----------|---------------|
+| `x86_64-unknown-linux-gnu` | Linux x86_64 | `cargo build --release` |
+| `aarch64-unknown-linux-gnu` | Linux ARM64 / RPi 4+ | `cross build --release --target aarch64-unknown-linux-gnu` |
+| `armv7-unknown-linux-gnueabihf` | Linux ARMv7 / RPi 3 | `cross build --release --target armv7-unknown-linux-gnueabihf` |
+| `x86_64-pc-windows-msvc` | Windows x86_64 | `cargo build --release` (on Windows) |
+| `x86_64-apple-darwin` | macOS Intel | `cargo build --release` (on macOS) |
+| `aarch64-apple-darwin` | macOS Apple Silicon | `cargo build --release` (on macOS) |
 
 ## Usage
 
