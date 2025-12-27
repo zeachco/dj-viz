@@ -22,6 +22,7 @@ pub enum Action {
     StartSearch,
     ToggleDebugViz,
     CycleNext,
+    CycleScript,
     SelectVisualization(usize),
 }
 
@@ -101,6 +102,7 @@ pub fn parse_key(key: Key, shift: bool, search_active: bool) -> Option<Action> {
         Key::Slash => Some(Action::StartSearch),
         Key::D => Some(Action::ToggleDebugViz),
         Key::Space => Some(Action::CycleNext),
+        Key::S => Some(Action::CycleScript),
         _ => parse_number_key(key, shift).map(Action::SelectVisualization),
     }
 }

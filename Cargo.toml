@@ -13,6 +13,7 @@ toml = "0.8"
 dirs = "5.0"
 rand = "0.9"
 enum_dispatch = "0.3"
+rhai = "1.19"
 bytemuck = { version = "1.14", features = ["derive"] }
 wgpu-types = "0.17"
 

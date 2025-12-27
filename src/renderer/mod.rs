@@ -16,6 +16,7 @@ pub mod kaleidoscope;
 pub mod lava_blobs;
 pub mod particle_nebula;
 pub mod psychedelic_spiral;
+pub mod scripted;
 pub mod shuffling_skeletons;
 pub mod solar_beat;
 pub mod spectro_road;
@@ -74,6 +75,7 @@ const ALL_LABELS: &[VisLabel] = &[
 ];
 
 pub use beat_bars::BeatBars;
+pub use scripted::ScriptManager;
 pub use black_hole::BlackHole;
 pub use crt_phosphor::CrtPhosphor;
 pub use dancing_skeletons::DancingSkeletons;

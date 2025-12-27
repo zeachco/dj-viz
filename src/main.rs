@@ -5,8 +5,9 @@ mod utils;
 
 use audio::{AudioAnalysis, AudioAnalyzer, OutputCapture, SourcePipe};
 use nannou::prelude::*;
-use renderer::{FeedbackRenderer, Renderer, Resolution};
+use renderer::{FeedbackRenderer, Renderer, Resolution, ScriptManager};
 use utils::Config;
+use std::path::PathBuf;
 use std::cell::RefCell;
 use std::env;
 use nannou::winit::event::WindowEvent;
@@ -40,6 +41,8 @@ struct Model {
     last_analysis: AudioAnalysis,
     /// Track shift key state from raw events (more reliable than app.keys.mods)
     shift_held: bool,
+    /// Manages Rhai scripted visualizations
+    script_manager: ScriptManager,
 }
 
 fn model(app: &App) -> Model {
@@ -101,6 +104,10 @@ fn model(app: &App) -> Model {
     let detection_config = config.detection();
     let viz_energy_ranges = config.viz_energy_ranges();
 
+    // Initialize script manager with scripts directory
+    let scripts_dir = PathBuf::from("scripts");
+    let script_manager = ScriptManager::new(scripts_dir);
+
     let mut model = Model {
         source: SourcePipe::new(),
         analyzer: AudioAnalyzer::with_config(44100.0, detection_config.clone()),
@@ -112,6 +119,7 @@ fn model(app: &App) -> Model {
         prev_energy: 0.0,
         last_analysis: AudioAnalysis::default(),
         shift_held: false,
+        script_manager,
     };
 
     // Enable debug visualization if --debug or -d flag was passed
@@ -148,6 +156,10 @@ fn update(app: &App, model: &mut Model, _update: Update) {
 
     model.renderer.update(&analysis);
 
+    // Update scripted visualization if active
+    let bounds = app.window_rect();
+    model.script_manager.update(&analysis, bounds);
+
     // Detect energy peak and flip zoom direction
     if analysis.energy >= 0.95 && model.prev_energy < 0.95 {
         model.phase_offset += std::f32::consts::PI; // Add 180 degrees to reverse direction
@@ -174,28 +186,35 @@ fn view(app: &App, model: &Model, frame: Frame) {
     let queue = window.queue();
     let bounds = app.window_rect();
 
-    // Create draw context for primary visualization
-    let primary_draw = app.draw();
-    model.renderer.draw_primary(&primary_draw, bounds);
+    // If a script is active, render it directly (no feedback effects)
+    if model.script_manager.is_active() {
+        let script_draw = app.draw();
+        model.script_manager.draw(&script_draw, bounds);
+        script_draw.to_frame(app, &frame).unwrap();
+    } else {
+        // Create draw context for primary visualization
+        let primary_draw = app.draw();
+        model.renderer.draw_primary(&primary_draw, bounds);
 
-    // Create draw contexts for overlay visualizations
-    let overlay_count = model.renderer.overlay_count();
-    let overlay_draws: Vec<nannou::Draw> = (0..overlay_count).map(|_| app.draw()).collect();
-    let overlay_draw_refs: Vec<&nannou::Draw> = overlay_draws.iter().collect();
-    model.renderer.draw_overlays(&overlay_draw_refs, bounds);
+        // Create draw contexts for overlay visualizations
+        let overlay_count = model.renderer.overlay_count();
+        let overlay_draws: Vec<nannou::Draw> = (0..overlay_count).map(|_| app.draw()).collect();
+        let overlay_draw_refs: Vec<&nannou::Draw> = overlay_draws.iter().collect();
+        model.renderer.draw_overlays(&overlay_draw_refs, bounds);
 
-    // Render through feedback buffer with burn blending and output to frame
-    {
-        let mut feedback = model.feedback.borrow_mut();
-        feedback.render_with_overlays(
-            device,
-            queue,
-            &primary_draw,
-            &overlay_draw_refs,
-            frame.texture_view(),
-            Frame::TEXTURE_FORMAT,
-            window.msaa_samples(),
-        );
+        // Render through feedback buffer with burn blending and output to frame
+        {
+            let mut feedback = model.feedback.borrow_mut();
+            feedback.render_with_overlays(
+                device,
+                queue,
+                &primary_draw,
+                &overlay_draw_refs,
+                frame.texture_view(),
+                Frame::TEXTURE_FORMAT,
+                window.msaa_samples(),
+            );
+        }
     }
 
     // Draw debug visualization directly to frame (not through feedback)
@@ -271,8 +290,21 @@ fn key_pressed(app: &App, model: &mut Model, key: Key) {
         // Normal mode actions
         Some(Action::StartSearch) => model.output_capture.start_search(),
         Some(Action::ToggleDebugViz) => model.renderer.toggle_debug_viz(),
-        Some(Action::CycleNext) => model.renderer.cycle_next(&model.last_analysis),
+        Some(Action::CycleNext) => {
+            // Deactivate script mode and cycle built-in visualizations
+            model.script_manager.deactivate();
+            model.renderer.cycle_next(&model.last_analysis);
+        }
+        Some(Action::CycleScript) => {
+            if let Some(name) = model.script_manager.cycle_next() {
+                model.renderer.show_notification(format!("Script: {}", name));
+            } else {
+                model.renderer.show_notification("No scripts found in scripts/".to_string());
+            }
+        }
         Some(Action::SelectVisualization(idx)) => {
+            // Deactivate script mode and select built-in visualization
+            model.script_manager.deactivate();
             if let Some(name) = model.renderer.set_visualization(idx) {
                 model
                     .renderer
