@@ -33,19 +33,31 @@ pub fn update_audio_in_scope(scope: &mut Scope, analysis: &AudioAnalysis, bounds
         .collect();
     scope.set_or_push("bands_normalized", bands_normalized);
 
-    // Full spectrum (1024 bins, each bin = sample_rate / FFT_SIZE Hz)
-    let spectrum: rhai::Array = analysis
-        .spectrum
-        .iter()
-        .map(|&s| Dynamic::from(s as f64))
+    // Downsampled spectrum for Rhai (256 bins to reduce overhead)
+    // Each output bin averages 4 input bins (1024 / 256 = 4)
+    const RHAI_SPECTRUM_SIZE: usize = 256;
+    const DOWNSAMPLE_FACTOR: usize = 4;
+
+    let spectrum: rhai::Array = (0..RHAI_SPECTRUM_SIZE)
+        .map(|i| {
+            let start = i * DOWNSAMPLE_FACTOR;
+            let end = (start + DOWNSAMPLE_FACTOR).min(analysis.spectrum.len());
+            let sum: f32 = analysis.spectrum[start..end].iter().sum();
+            let avg = sum / (end - start) as f32;
+            Dynamic::from(avg as f64)
+        })
         .collect();
     scope.set_or_push("spectrum", spectrum);
 
-    // Spectrum diff (velocity/change from previous frame)
-    let spectrum_diff: rhai::Array = analysis
-        .spectrum_diff
-        .iter()
-        .map(|&d| Dynamic::from(d as f64))
+    // Spectrum diff (velocity/change from previous frame), also downsampled
+    let spectrum_diff: rhai::Array = (0..RHAI_SPECTRUM_SIZE)
+        .map(|i| {
+            let start = i * DOWNSAMPLE_FACTOR;
+            let end = (start + DOWNSAMPLE_FACTOR).min(analysis.spectrum_diff.len());
+            let sum: f32 = analysis.spectrum_diff[start..end].iter().sum();
+            let avg = sum / (end - start) as f32;
+            Dynamic::from(avg as f64)
+        })
         .collect();
     scope.set_or_push("spectrum_diff", spectrum_diff);
 

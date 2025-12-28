@@ -182,8 +182,9 @@ pub struct AudioAnalyzer {
     spectral_complexity: f32,
     prev_spectral_complexity: f32,
 
-    // Full spectrum tracking
-    prev_spectrum: Vec<f32>,
+    // Full spectrum tracking (pre-allocated, reused each frame)
+    spectrum: Vec<f32>,
+    spectrum_diff: Vec<f32>,
     spectrum_mins: Vec<f32>,
     spectrum_maxs: Vec<f32>,
 
@@ -250,8 +251,9 @@ impl AudioAnalyzer {
             // Spectral complexity
             spectral_complexity: 0.0,
             prev_spectral_complexity: 0.0,
-            // Full spectrum tracking
-            prev_spectrum: vec![0.0; SPECTRUM_SIZE],
+            // Full spectrum tracking (pre-allocated)
+            spectrum: vec![0.0; SPECTRUM_SIZE],
+            spectrum_diff: vec![0.0; SPECTRUM_SIZE],
             spectrum_mins: vec![0.0; SPECTRUM_SIZE],
             spectrum_maxs: vec![0.0; SPECTRUM_SIZE],
             // Detection config
@@ -333,8 +335,7 @@ impl AudioAnalyzer {
         }
 
         // Calculate full spectrum magnitudes (for visualizations that want specific frequencies)
-        let mut spectrum = vec![0.0f32; SPECTRUM_SIZE];
-        let mut spectrum_diff = vec![0.0f32; SPECTRUM_SIZE];
+        // Reuse pre-allocated buffers to avoid allocations per frame
         const SPECTRUM_MIN_DRIFT: f32 = 0.99;
         const SPECTRUM_MAX_DRIFT: f32 = 0.99;
 
@@ -361,14 +362,12 @@ impl AudioAnalyzer {
 
             // Normalize to 0-1 using tracked range
             let range = (self.spectrum_maxs[i] - self.spectrum_mins[i]).max(0.01);
-            spectrum[i] = ((rough_normalized - self.spectrum_mins[i]) / range).clamp(0.0, 1.0);
+            let prev_val = self.spectrum[i];
+            self.spectrum[i] = ((rough_normalized - self.spectrum_mins[i]) / range).clamp(0.0, 1.0);
 
-            // Compute diff from previous frame
-            spectrum_diff[i] = spectrum[i] - self.prev_spectrum[i];
+            // Compute diff from previous frame (store previous before overwriting)
+            self.spectrum_diff[i] = self.spectrum[i] - prev_val;
         }
-
-        // Update previous spectrum for next frame's diff
-        self.prev_spectrum.clone_from(&spectrum);
 
         // Smooth bands (fast attack, slower decay)
         let attack = 0.7;
@@ -521,8 +520,8 @@ impl AudioAnalyzer {
 
         self.last_analysis = AudioAnalysis {
             bands: self.smoothed_bands,
-            spectrum,
-            spectrum_diff,
+            spectrum: self.spectrum.clone(),
+            spectrum_diff: self.spectrum_diff.clone(),
             bands_normalized,
             band_mins: self.band_mins,
             band_maxs: self.band_maxs,
