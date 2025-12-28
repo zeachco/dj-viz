@@ -240,9 +240,12 @@ impl AudioAnalyzer {
             beat_times: Vec::with_capacity(BPM_HISTORY_SIZE),
             last_beat_time: 0.0,
             smoothed_bpm: 0.0,
+            locked_bpm: 0.0,
+            bpm_confidence: 0,
             frame_time: 0.0,
             prev_bass_energy: 0.0,
             bass_energy_avg: 0.0,
+            low_bass_frames: 0,
             dominant_band: 0,
             last_dominant_update_time: 0.0,
             last_mark: 600, // Start at max (10 seconds at 60fps)
@@ -417,73 +420,108 @@ impl AudioAnalyzer {
         const BASS_AVG_DECAY: f32 = 0.995; // ~3 seconds to adapt at 60fps
         self.bass_energy_avg = self.bass_energy_avg * BASS_AVG_DECAY + bass_energy * (1.0 - BASS_AVG_DECAY);
 
-        // Detect beat: bass energy rising sharply above recent average
-        // Onset = current > previous AND current significantly above average
-        const BEAT_THRESHOLD_RATIO: f32 = 1.5; // Current must be 50% above average (stricter)
-        const MIN_BASS_FOR_BEAT: f32 = 0.2;    // Minimum absolute bass level (stricter)
-        let is_onset = bass_energy > self.prev_bass_energy
-            && bass_energy > self.bass_energy_avg * BEAT_THRESHOLD_RATIO
-            && bass_energy > MIN_BASS_FOR_BEAT;
+        // Track low bass periods (breaks in techno)
+        const LOW_BASS_THRESHOLD: f32 = 0.15; // Bass below this = likely in a break
+        const BREAK_FRAMES: u32 = 30;         // ~0.5 sec of low bass = break
+        if bass_energy < LOW_BASS_THRESHOLD {
+            self.low_bass_frames = self.low_bass_frames.saturating_add(1);
+        } else {
+            self.low_bass_frames = self.low_bass_frames.saturating_sub(2); // Faster recovery
+        }
+        let in_break = self.low_bass_frames > BREAK_FRAMES;
 
-        self.prev_bass_energy = bass_energy;
+        // During breaks: freeze BPM updates, use locked value
+        // This prevents BPM drift when kicks drop out
+        if in_break {
+            // Don't update beat detection during breaks
+            // Just use the locked BPM (or smoothed if no lock yet)
+            if self.locked_bpm > 0.0 {
+                self.smoothed_bpm = self.locked_bpm;
+            }
+        } else {
+            // Normal beat detection when not in break
+            // Detect beat: bass energy rising sharply above recent average
+            const BEAT_THRESHOLD_RATIO: f32 = 1.5; // Current must be 50% above average
+            const MIN_BASS_FOR_BEAT: f32 = 0.2;    // Minimum absolute bass level
+            let is_onset = bass_energy > self.prev_bass_energy
+                && bass_energy > self.bass_energy_avg * BEAT_THRESHOLD_RATIO
+                && bass_energy > MIN_BASS_FOR_BEAT;
 
-        if is_onset {
-            let time_since_last_beat = self.frame_time - self.last_beat_time;
+            if is_onset {
+                let time_since_last_beat = self.frame_time - self.last_beat_time;
 
-            // Only count as a beat if enough time has passed (avoid double-counting)
-            // Min 0.3s allows up to 200 BPM, max 1.5s filters out false positives
-            const MIN_BEAT_INTERVAL: f32 = 0.3;
-            const MAX_BEAT_INTERVAL: f32 = 1.5;
-            if time_since_last_beat >= MIN_BEAT_INTERVAL && time_since_last_beat <= MAX_BEAT_INTERVAL {
-                self.beat_times.push(self.frame_time);
-                self.last_beat_time = self.frame_time;
+                // Only count as a beat if enough time has passed (avoid double-counting)
+                // Min 0.3s allows up to 200 BPM, max 1.5s filters out false positives
+                const MIN_BEAT_INTERVAL: f32 = 0.3;
+                const MAX_BEAT_INTERVAL: f32 = 1.5;
+                if time_since_last_beat >= MIN_BEAT_INTERVAL && time_since_last_beat <= MAX_BEAT_INTERVAL {
+                    self.beat_times.push(self.frame_time);
+                    self.last_beat_time = self.frame_time;
 
-                // Keep only last 16 beats (~8-16 seconds of history for stable BPM)
-                const MAX_BEAT_HISTORY: usize = 16;
-                if self.beat_times.len() > MAX_BEAT_HISTORY {
-                    self.beat_times.remove(0);
-                }
-
-                // Calculate BPM from intervals between beats
-                // Require more beats for stable reading
-                if self.beat_times.len() >= 8 {
-                    let mut intervals = Vec::new();
-                    for i in 1..self.beat_times.len() {
-                        intervals.push(self.beat_times[i] - self.beat_times[i - 1]);
+                    // Keep only last 16 beats (~8-16 seconds of history for stable BPM)
+                    const MAX_BEAT_HISTORY: usize = 16;
+                    if self.beat_times.len() > MAX_BEAT_HISTORY {
+                        self.beat_times.remove(0);
                     }
 
-                    // Use median interval instead of average (more robust to outliers)
-                    intervals.sort_by(|a, b| a.partial_cmp(b).unwrap());
-                    let median_interval = intervals[intervals.len() / 2];
-
-                    // Convert to BPM (beats per minute)
-                    let instant_bpm = 60.0 / median_interval;
-
-                    // Clamp to reasonable BPM range (60-200)
-                    let clamped_bpm = instant_bpm.clamp(60.0, 200.0);
-
-                    // Smooth the BPM (very slow adjustment for stability)
-                    if self.smoothed_bpm == 0.0 {
-                        self.smoothed_bpm = clamped_bpm;
-                    } else {
-                        // Only update if within reasonable range of current estimate
-                        // This prevents wild jumps from temporary anomalies
-                        let diff_ratio = (clamped_bpm - self.smoothed_bpm).abs() / self.smoothed_bpm;
-                        if diff_ratio < 0.3 {
-                            // Small change - smooth slowly
-                            self.smoothed_bpm = self.smoothed_bpm * 0.95 + clamped_bpm * 0.05;
-                        } else if diff_ratio < 0.5 {
-                            // Moderate change - smooth very slowly
-                            self.smoothed_bpm = self.smoothed_bpm * 0.98 + clamped_bpm * 0.02;
+                    // Calculate BPM from intervals between beats
+                    // Require more beats for stable reading
+                    if self.beat_times.len() >= 8 {
+                        let mut intervals = Vec::new();
+                        for i in 1..self.beat_times.len() {
+                            intervals.push(self.beat_times[i] - self.beat_times[i - 1]);
                         }
-                        // Large changes (>50%) are ignored as likely errors
+
+                        // Use median interval instead of average (more robust to outliers)
+                        intervals.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                        let median_interval = intervals[intervals.len() / 2];
+
+                        // Convert to BPM (beats per minute)
+                        let instant_bpm = 60.0 / median_interval;
+
+                        // Clamp to reasonable BPM range (60-200)
+                        let clamped_bpm = instant_bpm.clamp(60.0, 200.0);
+
+                        // Check if this reading is consistent with smoothed BPM
+                        let is_consistent = self.smoothed_bpm == 0.0
+                            || (clamped_bpm - self.smoothed_bpm).abs() / self.smoothed_bpm < 0.1;
+
+                        if is_consistent {
+                            self.bpm_confidence = self.bpm_confidence.saturating_add(1);
+                        } else {
+                            self.bpm_confidence = self.bpm_confidence.saturating_sub(1);
+                        }
+
+                        // Update smoothed BPM
+                        if self.smoothed_bpm == 0.0 {
+                            self.smoothed_bpm = clamped_bpm;
+                        } else {
+                            let diff_ratio = (clamped_bpm - self.smoothed_bpm).abs() / self.smoothed_bpm;
+                            if diff_ratio < 0.15 {
+                                // Very close - update normally
+                                self.smoothed_bpm = self.smoothed_bpm * 0.9 + clamped_bpm * 0.1;
+                            } else if diff_ratio < 0.3 {
+                                // Moderately close - update slowly
+                                self.smoothed_bpm = self.smoothed_bpm * 0.95 + clamped_bpm * 0.05;
+                            }
+                            // Larger differences ignored
+                        }
+
+                        // Lock BPM when we have high confidence (consistent readings)
+                        // This value persists through breaks
+                        const CONFIDENCE_THRESHOLD: u32 = 8; // 8 consistent readings to lock
+                        if self.bpm_confidence >= CONFIDENCE_THRESHOLD {
+                            self.locked_bpm = self.smoothed_bpm;
+                        }
                     }
+                } else if time_since_last_beat > MAX_BEAT_INTERVAL {
+                    // Reset beat tracking if too long since last beat
+                    self.last_beat_time = self.frame_time;
                 }
-            } else if time_since_last_beat > MAX_BEAT_INTERVAL {
-                // Reset beat tracking if too long since last beat
-                self.last_beat_time = self.frame_time;
             }
         }
+
+        self.prev_bass_energy = bass_energy;
 
         // Update dominant band (max once per second)
         const DOMINANT_UPDATE_INTERVAL: f32 = 1.0; // 1 second
