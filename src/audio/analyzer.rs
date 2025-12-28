@@ -22,11 +22,19 @@ const BAND_EDGES: [f32; NUM_BANDS + 1] = [
     20.0, 60.0, 250.0, 500.0, 2000.0, 4000.0, 6000.0, 12000.0, 20000.0,
 ];
 
+/// Number of spectrum bins to expose (half of FFT size, up to Nyquist)
+pub const SPECTRUM_SIZE: usize = FFT_SIZE / 2;
+
 /// Pre-computed analysis results - no allocations needed by visualizations
 #[derive(Clone)]
 pub struct AudioAnalysis {
     /// Energy in each frequency band (0-1, smoothed)
     pub bands: [f32; NUM_BANDS],
+    /// Full frequency spectrum magnitudes (0-1 normalized, SPECTRUM_SIZE bins)
+    /// Index 0 = DC, Index N = N * sample_rate / FFT_SIZE Hz
+    pub spectrum: Vec<f32>,
+    /// Difference from previous frame's spectrum (for velocity/change visualization)
+    pub spectrum_diff: Vec<f32>,
     /// Bands normalized relative to tracked min/max range (can be outside 0-1)
     /// If a band oscillates between 0.6-0.9, this maps it to 0.0-1.0 range
     pub bands_normalized: [f32; NUM_BANDS],
@@ -82,6 +90,8 @@ impl Default for AudioAnalysis {
     fn default() -> Self {
         Self {
             bands: [0.0; NUM_BANDS],
+            spectrum: vec![0.0; SPECTRUM_SIZE],
+            spectrum_diff: vec![0.0; SPECTRUM_SIZE],
             bands_normalized: [0.0; NUM_BANDS],
             band_mins: [0.0; NUM_BANDS],
             band_maxs: [0.0; NUM_BANDS],
@@ -172,6 +182,11 @@ pub struct AudioAnalyzer {
     spectral_complexity: f32,
     prev_spectral_complexity: f32,
 
+    // Full spectrum tracking
+    prev_spectrum: Vec<f32>,
+    spectrum_mins: Vec<f32>,
+    spectrum_maxs: Vec<f32>,
+
     // Detection configuration (from config file)
     detection_config: DetectionConfig,
 }
@@ -235,6 +250,10 @@ impl AudioAnalyzer {
             // Spectral complexity
             spectral_complexity: 0.0,
             prev_spectral_complexity: 0.0,
+            // Full spectrum tracking
+            prev_spectrum: vec![0.0; SPECTRUM_SIZE],
+            spectrum_mins: vec![0.0; SPECTRUM_SIZE],
+            spectrum_maxs: vec![0.0; SPECTRUM_SIZE],
             // Detection config
             detection_config,
         }
@@ -312,6 +331,44 @@ impl AudioAnalyzer {
                 bands_raw[i] = normalized;
             }
         }
+
+        // Calculate full spectrum magnitudes (for visualizations that want specific frequencies)
+        let mut spectrum = vec![0.0f32; SPECTRUM_SIZE];
+        let mut spectrum_diff = vec![0.0f32; SPECTRUM_SIZE];
+        const SPECTRUM_MIN_DRIFT: f32 = 0.99;
+        const SPECTRUM_MAX_DRIFT: f32 = 0.99;
+
+        for i in 1..SPECTRUM_SIZE {
+            // Get magnitude in dB scale
+            let magnitude = self.fft_buffer[i].norm_sqr();
+            let db = 10.0 * (magnitude + 1e-10).log10();
+            let rough_normalized = ((db + 100.0) / 160.0).clamp(0.0, 1.0);
+
+            // Adaptive min/max tracking per bin
+            if rough_normalized < self.spectrum_mins[i] || self.spectrum_mins[i] == 0.0 {
+                self.spectrum_mins[i] = rough_normalized;
+            } else {
+                self.spectrum_mins[i] =
+                    self.spectrum_mins[i] * SPECTRUM_MIN_DRIFT + rough_normalized * (1.0 - SPECTRUM_MIN_DRIFT);
+            }
+
+            if rough_normalized > self.spectrum_maxs[i] {
+                self.spectrum_maxs[i] = rough_normalized;
+            } else {
+                self.spectrum_maxs[i] =
+                    self.spectrum_maxs[i] * SPECTRUM_MAX_DRIFT + rough_normalized * (1.0 - SPECTRUM_MAX_DRIFT);
+            }
+
+            // Normalize to 0-1 using tracked range
+            let range = (self.spectrum_maxs[i] - self.spectrum_mins[i]).max(0.01);
+            spectrum[i] = ((rough_normalized - self.spectrum_mins[i]) / range).clamp(0.0, 1.0);
+
+            // Compute diff from previous frame
+            spectrum_diff[i] = spectrum[i] - self.prev_spectrum[i];
+        }
+
+        // Update previous spectrum for next frame's diff
+        self.prev_spectrum.clone_from(&spectrum);
 
         // Smooth bands (fast attack, slower decay)
         let attack = 0.7;
@@ -464,6 +521,8 @@ impl AudioAnalyzer {
 
         self.last_analysis = AudioAnalysis {
             bands: self.smoothed_bands,
+            spectrum,
+            spectrum_diff,
             bands_normalized,
             band_mins: self.band_mins,
             band_maxs: self.band_maxs,

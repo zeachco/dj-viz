@@ -33,6 +33,22 @@ pub fn update_audio_in_scope(scope: &mut Scope, analysis: &AudioAnalysis, bounds
         .collect();
     scope.set_or_push("bands_normalized", bands_normalized);
 
+    // Full spectrum (1024 bins, each bin = sample_rate / FFT_SIZE Hz)
+    let spectrum: rhai::Array = analysis
+        .spectrum
+        .iter()
+        .map(|&s| Dynamic::from(s as f64))
+        .collect();
+    scope.set_or_push("spectrum", spectrum);
+
+    // Spectrum diff (velocity/change from previous frame)
+    let spectrum_diff: rhai::Array = analysis
+        .spectrum_diff
+        .iter()
+        .map(|&d| Dynamic::from(d as f64))
+        .collect();
+    scope.set_or_push("spectrum_diff", spectrum_diff);
+
     // Temporal metrics
     scope.set_or_push("bpm", analysis.bpm as f64);
     scope.set_or_push("dominant_band", analysis.dominant_band as i64);
