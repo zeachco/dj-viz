@@ -146,13 +146,13 @@ fn update(app: &App, model: &mut Model, _update: Update) {
     // Store for use in key handlers
     model.last_analysis = analysis.clone();
 
-    // Debug: print energy every second
-    if app.elapsed_frames().is_multiple_of(60) {
-        println!(
-            "Energy: {:.2} | Bass: {:.2} | Mids: {:.2} | Treble: {:.2}",
-            analysis.energy, analysis.bass, analysis.mids, analysis.treble
-        );
-    }
+    // // Debug: print energy every second
+    // if app.elapsed_frames().is_multiple_of(60) {
+    //     println!(
+    //         "Energy: {:.2} | Bass: {:.2} | Mids: {:.2} | Treble: {:.2}",
+    //         analysis.energy, analysis.bass, analysis.mids, analysis.treble
+    //     );
+    // }
 
     model.renderer.update(&analysis);
 

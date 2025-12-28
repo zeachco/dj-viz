@@ -7,14 +7,52 @@ mod audio_api;
 mod draw_api;
 
 use crate::audio::AudioAnalysis;
+use audio_api::update_audio_in_scope;
 use draw_api::{register_draw_api, register_math_api, CommandQueue};
 use nannou::prelude::*;
-use rhai::{Engine, Scope, AST};
+use rhai::{Dynamic, Engine, Scope, AST};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::SystemTime;
+
+/// Persistent variable store for scripts (survives hot-reload)
+type VarStore = Rc<RefCell<HashMap<String, Dynamic>>>;
+
+/// Register persistent variable functions on the engine
+fn register_var_api(engine: &mut Engine, store: VarStore) {
+    // get(name) - get a persistent variable, returns () if not set
+    let s = store.clone();
+    engine.register_fn("get", move |name: &str| -> Dynamic {
+        s.borrow().get(name).cloned().unwrap_or(Dynamic::UNIT)
+    });
+
+    // set(name, value) - set a persistent variable
+    let s = store.clone();
+    engine.register_fn("set", move |name: &str, value: Dynamic| {
+        s.borrow_mut().insert(name.to_string(), value);
+    });
+
+    // get_or(name, default) - get a persistent variable, or return default (doesn't store default)
+    let s = store.clone();
+    engine.register_fn("get_or", move |name: &str, default: Dynamic| -> Dynamic {
+        s.borrow().get(name).cloned().unwrap_or(default)
+    });
+
+    // init(name, value) - set only if not already set, returns current value
+    let s = store.clone();
+    engine.register_fn("init", move |name: &str, value: Dynamic| -> Dynamic {
+        let mut store = s.borrow_mut();
+        if let Some(existing) = store.get(name) {
+            existing.clone()
+        } else {
+            store.insert(name.to_string(), value.clone());
+            value
+        }
+    });
+}
 
 /// Check interval for file modifications (in frames, ~0.5 sec at 60fps)
 const RELOAD_CHECK_INTERVAL: u32 = 30;
@@ -144,18 +182,22 @@ pub struct ScriptedVisualization {
     ast: Option<AST>,
     scope: Scope<'static>,
     commands: CommandQueue,
+    vars: VarStore,
     script_path: PathBuf,
     last_modified: SystemTime,
     frame_counter: u32,
     check_counter: u32,
     last_error_frame: u32,
     bounds: Rect,
+    /// True on first frame after script load/reload
+    script_init: bool,
 }
 
 impl ScriptedVisualization {
     /// Create a new scripted visualization from a file path
     pub fn new(script_path: PathBuf) -> Result<Self, String> {
         let commands: CommandQueue = Rc::new(RefCell::new(Vec::new()));
+        let vars: VarStore = Rc::new(RefCell::new(HashMap::new()));
 
         let mut engine = Engine::new();
 
@@ -165,6 +207,7 @@ impl ScriptedVisualization {
         // Register APIs
         register_draw_api(&mut engine, commands.clone());
         register_math_api(&mut engine);
+        register_var_api(&mut engine, vars.clone());
 
         // Get initial modification time
         let last_modified = fs::metadata(&script_path)
@@ -176,12 +219,14 @@ impl ScriptedVisualization {
             ast: None,
             scope: Scope::new(),
             commands,
+            vars,
             script_path,
             last_modified,
             frame_counter: 0,
             check_counter: 0,
             last_error_frame: 0,
             bounds: Rect::from_w_h(640.0, 480.0),
+            script_init: true,
         };
 
         // Load and compile the script
@@ -201,6 +246,11 @@ impl ScriptedVisualization {
             .map_err(|e| format!("Compile error: {}", e))?;
 
         self.ast = Some(ast);
+        // Clear scope and persistent vars so script can reinitialize
+        self.scope.clear();
+        self.vars.borrow_mut().clear();
+        // Signal first frame after reload
+        self.script_init = true;
         println!("Script compiled: {:?}", self.script_path.file_name());
 
         Ok(())
@@ -220,7 +270,6 @@ impl ScriptedVisualization {
                     self.last_modified = modified;
                     println!("Script modified, reloading...");
 
-                    // Keep the scope (preserves state) but reload AST
                     if let Err(e) = self.reload_script() {
                         eprintln!("Reload failed: {}", e);
                         // Keep using the previous AST
@@ -241,16 +290,16 @@ impl ScriptedVisualization {
         // Clear command queue
         self.commands.borrow_mut().clear();
 
-        // Remember scope size before pushing audio constants
-        let scope_size = self.scope.len();
-
-        // Push audio data and frame info as constants
-        audio_api::push_audio_to_scope(
+        // Update audio data in scope (uses set_or_push to preserve user variables)
+        update_audio_in_scope(
             &mut self.scope,
             analysis,
             bounds,
             self.frame_counter as i64,
         );
+
+        // Update script_init flag (true on first frame after load/reload)
+        self.scope.set_or_push("script_init", self.script_init);
 
         // Run the script
         if let Some(ref ast) = self.ast {
@@ -263,8 +312,8 @@ impl ScriptedVisualization {
             }
         }
 
-        // Rewind scope to remove audio constants (keeps user variables)
-        self.scope.rewind(scope_size);
+        // Clear init flag after first successful frame
+        self.script_init = false;
     }
 
     /// Draw the visualization

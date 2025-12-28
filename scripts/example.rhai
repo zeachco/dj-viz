@@ -69,16 +69,23 @@
 // pi()                                      : 3.14159...
 // tau()                                     : 6.28318... (2*pi)
 //
+// --- Persistent Variables (survive between frames, cleared on hot-reload) ---
+// init(name, value)                         : Set only if not set, returns current value
+// get(name)                                 : Get value, returns () if not set
+// set(name, value)                          : Set value
+// get_or(name, default)                     : Get value or return default (doesn't store)
+//
 // ============================================================================
 
-// Initialize persistent state on first frame
-let hue_offset = 0.0;
-let particles = [];
+// Initialize persistent state (survives between frames, reset on hot-reload)
+let hue_offset = init("hue_offset", 0.0);
+let particles = init("particles", []);
 
 // Cycle hue on musical transitions
 if transition_detected {
     hue_offset = (hue_offset + 0.15) % 1.0;
 }
+set("hue_offset", hue_offset);
 
 // Spawn particles on bass hits
 if bass > 0.5 && rand() < bass * 0.3 {
@@ -113,7 +120,7 @@ for p in particles {
         new_particles.push(p);
     }
 }
-particles = new_particles;
+set("particles", new_particles);
 
 // Draw frequency bars at the bottom
 let bar_width = bounds_w / 8.0;

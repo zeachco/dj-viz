@@ -151,24 +151,24 @@ impl DetectionConfig {
 
 /// Default energy ranges for visualizations
 pub const DEFAULT_VIZ_ENERGY_RANGES: &[[f32; 2]; 18] = &[
-    [0.5, 1.0], // SolarBeat
-    [0.3, 0.8], // SpectroRoad
-    [0.2, 0.6], // Squares
+    [0.5, 0.9], // SolarBeat
+    [0.8, 1.0], // SpectroRoad
+    [0.4, 0.6], // Squares
     [0.6, 1.0], // TeslaCoil
     [0.3, 0.7], // Kaleidoscope
-    [0.2, 0.5], // LavaBlobs
+    [0.1, 0.5], // LavaBlobs
     [0.4, 0.9], // BeatBars
     [0.3, 0.7], // CrtPhosphor
     [0.5, 1.0], // BlackHole
     [0.6, 1.0], // GravityFlames
-    [0.1, 0.4], // FractalTree
-    [0.3, 0.7], // DancingSkeletons
-    [0.2, 0.6], // ShufflingSkeletons
-    [0.5, 1.0], // PsychedelicSpiral
+    [0.0, 0.4], // FractalTree
+    [0.1, 0.6], // DancingSkeletons
+    [0.7, 1.0], // ShufflingSkeletons
+    [0.3, 0.9], // PsychedelicSpiral
     [0.6, 1.0], // SpiralTunnel
     [0.1, 0.5], // ParticleNebula
     [0.3, 0.7], // FreqMandala
-    [0.7, 1.0], // StrobeGrid
+    [0.5, 1.0], // StrobeGrid
 ];
 
 #[derive(Serialize, Deserialize, Default)]
