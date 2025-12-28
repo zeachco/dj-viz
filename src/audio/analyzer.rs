@@ -76,6 +76,14 @@ pub struct AudioAnalysis {
     pub instrument_removed: bool,
     /// Weighted average frequency (spectral centroid in Hz)
     pub spectral_centroid: f32,
+
+    // Emotional intensity tracking
+    /// Overall musical intensity (0-1), builds slowly with sustained energy
+    pub intensity: f32,
+    /// Whether intensity is currently building up (rising momentum)
+    pub intensity_building: bool,
+    /// Raw intensity momentum (can exceed 1.0 during peaks)
+    pub intensity_momentum: f32,
 }
 
 impl Default for AudioAnalysis {
@@ -106,6 +114,10 @@ impl Default for AudioAnalysis {
             instrument_added: false,
             instrument_removed: false,
             spectral_centroid: 1000.0,
+            // Intensity tracking
+            intensity: 0.0,
+            intensity_building: false,
+            intensity_momentum: 0.0,
         }
     }
 }
@@ -172,6 +184,11 @@ pub struct AudioAnalyzer {
     spectral_complexity: f32,
     prev_spectral_complexity: f32,
 
+    // Intensity tracking (emotional build-up)
+    intensity: f32,
+    intensity_momentum: f32,
+    sustained_energy_avg: f32,
+
     // Detection configuration (from config file)
     detection_config: DetectionConfig,
 }
@@ -235,6 +252,10 @@ impl AudioAnalyzer {
             // Spectral complexity
             spectral_complexity: 0.0,
             prev_spectral_complexity: 0.0,
+            // Intensity tracking
+            intensity: 0.0,
+            intensity_momentum: 0.0,
+            sustained_energy_avg: 0.0,
             // Detection config
             detection_config,
         }
@@ -450,6 +471,10 @@ impl AudioAnalyzer {
         let treble =
             (self.smoothed_bands[5] + self.smoothed_bands[6] + self.smoothed_bands[7]) / 3.0;
 
+        // Calculate emotional intensity
+        let (intensity, intensity_building, intensity_momentum) =
+            self.calculate_intensity(self.smoothed_energy, bass, rise_rate);
+
         // Compute normalized bands relative to tracked min/max
         // This allows values outside [0, 1] when current is outside the tracked range
         let mut bands_normalized = [0.0f32; NUM_BANDS];
@@ -486,6 +511,10 @@ impl AudioAnalyzer {
             instrument_added,
             instrument_removed,
             spectral_centroid,
+            // Intensity tracking
+            intensity,
+            intensity_building,
+            intensity_momentum,
         };
 
         self.last_analysis.clone()
@@ -626,6 +655,61 @@ impl AudioAnalyzer {
         }
 
         false
+    }
+
+    /// Calculate emotional intensity - a metric that builds with sustained energy
+    /// Returns (intensity, intensity_building, intensity_momentum)
+    fn calculate_intensity(&mut self, energy: f32, bass: f32, rise_rate: f32) -> (f32, bool, f32) {
+        // Intensity builds when:
+        // 1. Energy is sustained above a threshold
+        // 2. Bass is strong (adds weight/power)
+        // 3. Energy is rising (building momentum)
+
+        const ENERGY_THRESHOLD: f32 = 0.3; // Minimum energy to build intensity
+        const BASS_WEIGHT: f32 = 0.4; // How much bass contributes
+        const RISE_WEIGHT: f32 = 0.3; // How much rising energy contributes
+        const BUILD_RATE: f32 = 0.02; // How fast intensity builds (per frame)
+        const DECAY_RATE: f32 = 0.008; // How fast intensity decays (slower than build)
+        const MOMENTUM_SMOOTHING: f32 = 0.92; // Smoothing for momentum
+
+        // Update sustained energy average (very slow moving average)
+        self.sustained_energy_avg = self.sustained_energy_avg * 0.98 + energy * 0.02;
+
+        // Calculate intensity input: combination of current energy, bass, and rise rate
+        let bass_factor = bass.powf(1.5); // Emphasize strong bass
+        let rise_factor = (rise_rate * 2.0).clamp(0.0, 1.0); // Rising energy boost
+
+        let intensity_input = energy * (1.0 - BASS_WEIGHT - RISE_WEIGHT)
+            + bass_factor * BASS_WEIGHT
+            + rise_factor * RISE_WEIGHT;
+
+        // Only build intensity if above threshold
+        let is_building = energy > ENERGY_THRESHOLD && rise_rate > -0.05;
+
+        // Update momentum (smoothed direction of intensity change)
+        let target_momentum = if is_building {
+            intensity_input
+        } else {
+            0.0
+        };
+        self.intensity_momentum =
+            self.intensity_momentum * MOMENTUM_SMOOTHING + target_momentum * (1.0 - MOMENTUM_SMOOTHING);
+
+        // Update intensity with asymmetric attack/decay
+        if is_building && intensity_input > self.intensity {
+            // Building up - use intensity input to push higher
+            let build_amount = BUILD_RATE * (1.0 + bass_factor + rise_factor);
+            self.intensity = (self.intensity + build_amount).min(1.0);
+        } else if !is_building || intensity_input < self.intensity * 0.7 {
+            // Decaying - slow falloff for emotional continuity
+            self.intensity = (self.intensity - DECAY_RATE).max(0.0);
+        }
+
+        // Clamp final intensity
+        let intensity = self.intensity.clamp(0.0, 1.0);
+        let intensity_building = is_building && self.intensity_momentum > 0.2;
+
+        (intensity, intensity_building, self.intensity_momentum)
     }
 
     /// Detect instrument changes via spectral complexity

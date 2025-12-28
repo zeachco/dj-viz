@@ -177,6 +177,15 @@ fn update(app: &App, model: &mut Model, _update: Update) {
         // Bass amplifies the current direction (zoom in faster or out faster)
         let bass_boost = analysis.bass * 0.012 * direction;
         feedback.scale = 1.0 + base_offset + bass_boost;
+
+        // Update intensity effect with emotional intensity data
+        const FRAME_DELTA: f32 = 1.0 / 60.0;
+        feedback.update_intensity(
+            analysis.intensity,
+            analysis.intensity_momentum,
+            analysis.bass,
+            FRAME_DELTA,
+        );
     }
 }
 
