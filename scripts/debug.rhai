@@ -46,7 +46,6 @@ set("tt_viz_chg", tt_viz_chg);
 let margin = 40.0;
 let meter_width = 30.0;
 let slider_height = 25.0;
-let bool_panel_width = 120.0;
 
 // === LEFT: Energy Floor Vertical Meter ===
 let meter_x = bounds_left + margin + meter_width / 2.0;
@@ -67,6 +66,7 @@ rect(meter_x, fill_y, meter_width - 4.0, fill_h, e_col[0], e_col[1], e_col[2], e
 text(meter_x, bounds_top - 15.0, "ENERGY", 12, 0.7, 0.7, 0.7, 1.0);
 
 // === BOTTOM: Centroid Horizontal Slider ===
+let bool_panel_width = 140.0;  // Reserve space for boolean indicators on the right
 let slider_w = bounds_w - margin * 4.0 - meter_width - bool_panel_width;
 let slider_x = bounds_left + margin * 2.0 + meter_width + slider_w / 2.0;
 let slider_y = bounds_bottom + margin;
@@ -137,13 +137,13 @@ if spec_len > 0 {
 // Spectrum label
 text(slider_x, spec_y_base + spec_height + 12.0, "SPECTRUM", 12, 0.7, 0.7, 0.7, 1.0);
 
-// === RIGHT: Boolean State Indicators ===
-let bool_x = bounds_right - margin - bool_panel_width / 2.0;
-let bool_start_y = bounds_top - margin;
-let bool_spacing = 35.0;
-let indicator_size = 20.0;
+// === BOTTOM RIGHT: Boolean State Indicators (right of spectrum) ===
+let bool_area_left = spec_left + spec_w + 15.0;
+let bool_area_center_x = bool_area_left + bool_panel_width / 2.0 - 15.0;
+let bool_row_spacing = 28.0;
+let indicator_size = 16.0;
 
-// Helper function for drawing boolean indicator
+// Helper function for drawing boolean indicator (horizontal layout)
 fn draw_bool_indicator(x, y, label, timer, fade_dur, indicator_size) {
     let progress = timer / fade_dur;
     let is_on = progress > 0.0;
@@ -155,28 +155,30 @@ fn draw_bool_indicator(x, y, label, timer, fade_dur, indicator_size) {
         [0.2, 0.15, 0.15, 0.7]  // Dark red-ish off state
     };
 
-    ellipse(x - 45.0, y, indicator_size, indicator_size, bg_col[0], bg_col[1], bg_col[2], bg_col[3]);
+    ellipse(x - 40.0, y, indicator_size, indicator_size, bg_col[0], bg_col[1], bg_col[2], bg_col[3]);
 
     // Glow when on
     if is_on {
         let glow = hsla(0.3, 0.6, 0.5, progress * 0.3);
-        ellipse(x - 45.0, y, indicator_size + 10.0, indicator_size + 10.0, glow[0], glow[1], glow[2], glow[3]);
+        ellipse(x - 40.0, y, indicator_size + 8.0, indicator_size + 8.0, glow[0], glow[1], glow[2], glow[3]);
     }
 
     // Label
-    text(x, y, label, 11, 0.7, 0.7, 0.7, 1.0);
+    text(x, y, label, 10, 0.7, 0.7, 0.7, 1.0);
 }
 
-draw_bool_indicator(bool_x, bool_start_y, "TRANSITION", tt_transition, fade_duration, indicator_size);
-draw_bool_indicator(bool_x, bool_start_y - bool_spacing, "PUNCH", tt_punch, fade_duration, indicator_size);
-draw_bool_indicator(bool_x, bool_start_y - bool_spacing * 2.0, "BREAK", tt_break, fade_duration, indicator_size);
-draw_bool_indicator(bool_x, bool_start_y - bool_spacing * 3.0, "INST+", tt_inst_add, fade_duration, indicator_size);
-draw_bool_indicator(bool_x, bool_start_y - bool_spacing * 4.0, "INST-", tt_inst_rem, fade_duration, indicator_size);
-draw_bool_indicator(bool_x, bool_start_y - bool_spacing * 5.0, "VIZ CHG", tt_viz_chg, fade_duration, indicator_size);
+// Stack indicators vertically, aligned with spectrum height
+let bool_base_y = spec_y_base + spec_height - 10.0;
+draw_bool_indicator(bool_area_center_x, bool_base_y, "TRANSITION", tt_transition, fade_duration, indicator_size);
+draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing, "PUNCH", tt_punch, fade_duration, indicator_size);
+draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing * 2.0, "BREAK", tt_break, fade_duration, indicator_size);
+draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing * 3.0, "INST+", tt_inst_add, fade_duration, indicator_size);
+draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing * 4.0, "INST-", tt_inst_rem, fade_duration, indicator_size);
+draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing * 5.0, "VIZ CHG", tt_viz_chg, fade_duration, indicator_size);
 
 // === CENTER: Geometry Patterns for All Bands ===
 let center_area_left = bounds_left + margin * 2.0 + meter_width + 20.0;
-let center_area_right = bounds_right - margin - bool_panel_width - 20.0;
+let center_area_right = bounds_right - margin - 20.0;
 // Account for centroid slider + spectrum panel + labels
 let center_area_bottom = bounds_bottom + margin * 2.0 + slider_height + 30.0 + 100.0 + 30.0;
 let center_area_top = bounds_top - margin - 20.0;
