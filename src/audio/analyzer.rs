@@ -393,9 +393,9 @@ impl AudioAnalyzer {
             self.spectrum[i] = normalized;
         }
 
-        // Smooth bands (fast attack, slower decay)
+        // Smooth bands (fast attack, faster decay so they don't stay high)
         let attack = 0.7;
-        let decay = 0.15;
+        let decay = 0.25; // Faster decay (was 0.15) so bands drop quicker
         for i in 0..NUM_BANDS {
             if bands_raw[i] > self.smoothed_bands[i] {
                 self.smoothed_bands[i] =
@@ -411,11 +411,12 @@ impl AudioAnalyzer {
         if energy_raw > self.smoothed_energy {
             self.smoothed_energy = self.smoothed_energy * 0.3 + energy_raw * 0.7;
         } else {
-            self.smoothed_energy = self.smoothed_energy * 0.9 + energy_raw * 0.1;
+            // Faster decay (was 0.9/0.1) so energy drops quicker during quiet sections
+            self.smoothed_energy = self.smoothed_energy * 0.82 + energy_raw * 0.18;
         }
 
-        // Update lagged energy with much slower smoothing (creates lag effect)
-        self.lagged_energy = self.lagged_energy * 0.95 + self.smoothed_energy * 0.05;
+        // Update lagged energy with slower smoothing (creates lag effect, but not too slow)
+        self.lagged_energy = self.lagged_energy * 0.92 + self.smoothed_energy * 0.08;
 
         // Compute energy difference (positive = rising energy, negative = falling)
         let energy_diff = self.smoothed_energy - self.lagged_energy;
@@ -718,10 +719,10 @@ impl AudioAnalyzer {
     /// Detect punch (calm-before-spike): energy was low then suddenly spiked
     /// Returns (punch_detected, energy_floor, rise_rate)
     fn detect_punch(&mut self, current_energy: f32) -> (bool, f32, f32) {
-        const FLOOR_DECAY: f32 = 0.998; // Very slowly drift floor up (~8 sec at 60fps)
-        const FLOOR_ATTACK: f32 = 0.1;  // Moderately drop floor on new lows
-        const FLOOR_SPIKE_ATTACK: f32 = 0.05; // Slow rise when energy spikes high
-        const SPIKE_THRESHOLD: f32 = 0.4; // Energy above floor to trigger fast rise (stricter)
+        const FLOOR_DECAY: f32 = 0.992; // Faster drift toward current (~2 sec at 60fps, was 0.998)
+        const FLOOR_ATTACK: f32 = 0.18; // Faster drop on new lows (was 0.1)
+        const FLOOR_SPIKE_ATTACK: f32 = 0.12; // Faster rise during sustained loud sections (was 0.05)
+        const SPIKE_THRESHOLD: f32 = 0.3; // Lower threshold to trigger floor rise (was 0.4)
 
         // Get thresholds from config
         let floor_threshold = self.detection_config.punch_floor_threshold();

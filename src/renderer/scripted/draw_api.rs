@@ -214,6 +214,7 @@ pub fn register_math_api(engine: &mut Engine) {
     engine.register_fn("min", |x: f64, y: f64| x.min(y));
     engine.register_fn("max", |x: f64, y: f64| x.max(y));
     engine.register_fn("clamp", |x: f64, min: f64, max: f64| x.clamp(min, max));
+    engine.register_fn("lerp", |a: f64, b: f64, t: f64| a + (b - a) * t);
 
     // Random functions
     engine.register_fn("rand", || rand::random::<f64>());

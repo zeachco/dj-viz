@@ -9,6 +9,7 @@
 
 let dt = 1.0 / 60.0;  // Approx frame time
 let fade_duration = 2.0;  // How long to keep ON color
+let spectrum_smoothing = 0.75;  // Spectrum smoothing factor (lower = smoother, 0.1-0.3 range)
 
 // Get persistent trigger timers (initialized to 0.0 on first frame / hot-reload)
 let tt_transition = init("tt_transition", 0.0);
@@ -61,10 +62,11 @@ let slider_height = 25.0;
 let bg_center_x = (bounds_left + bounds_right) / 2.0;
 let bg_center_y = (bounds_top + bounds_bottom) / 2.0;
 let bg_h = bounds_top - bounds_bottom;
-rect(bg_center_x, bg_center_y, bounds_w, bg_h, 0.0, 0.0, 0.0, 0.9);
+rect(bg_center_x, bg_center_y, bounds_w, bg_h, 0.0, 0.0, 0.0, 0.5);
 
-// === FPS Display (top left) ===
-let fps_text = "FPS: " + floor(fps);
+// === FPS Display (top left) - calculated from dt ===
+let estimated_fps = floor(1.0 / dt);
+let fps_text = "FPS: ~" + estimated_fps;
 text(bounds_left + 60.0, bounds_top - 30.0, fps_text, 24, 0.0, 0.8, 0.0, 1.0);
 
 // === TOP: Info Panel (from debug.rs) ===
@@ -236,12 +238,33 @@ let spec_left = col2_left;
 // Background for spectrum area
 rect(slider_x, spec_y_base + spec_height / 2.0, spec_w, spec_height, 0.1, 0.1, 0.12, 0.7);
 
-// Draw spectrum bars
+// Draw spectrum bars with smoothing
 let spec_len = spectrum.len();
 if spec_len > 0 {
+    // Get or initialize smoothed spectrum array
+    let smoothed_spec = get("smoothed_spectrum");
+    if smoothed_spec == () {
+        // First frame: initialize with current spectrum
+        smoothed_spec = [];
+        for i in 0..spec_len {
+            smoothed_spec.push(spectrum[i]);
+        }
+    }
+
+    // Smooth spectrum values using lerp (fast attack, slow decay)
+    let attack = 0.6;  // Fast rise
+    let decay_factor = spectrum_smoothing;  // Slow fall
+    for i in 0..spec_len {
+        let target = spectrum[i];
+        let current = if i < smoothed_spec.len() { smoothed_spec[i] } else { target };
+        let t = if target > current { attack } else { decay_factor };
+        smoothed_spec[i] = lerp(current, target, t);
+    }
+    set("smoothed_spectrum", smoothed_spec);
+
     let bar_w = spec_w / (spec_len * 1.0);
     for i in 0..spec_len {
-        let mag = spectrum[i];
+        let mag = smoothed_spec[i];
         let diff = spectrum_diff[i];
         let bar_h = mag * spec_height;
         let hue = clamp(0.3 - diff * 0.3, 0.0, 0.6);
