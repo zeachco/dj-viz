@@ -154,10 +154,10 @@ fn update(app: &App, model: &mut Model, _update: Update) {
     //     );
     // }
 
-    model.renderer.update(&analysis);
-
     // Update scripted visualization if active
     let bounds = app.window_rect();
+
+    model.renderer.update(&analysis, bounds);
     model.script_manager.update(&analysis, bounds);
 
     // Detect energy peak and flip zoom direction

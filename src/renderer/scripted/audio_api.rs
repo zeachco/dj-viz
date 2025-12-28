@@ -75,6 +75,11 @@ pub fn update_audio_in_scope(scope: &mut Scope, analysis: &AudioAnalysis, bounds
     scope.set_or_push("instrument_added", analysis.instrument_added);
     scope.set_or_push("instrument_removed", analysis.instrument_removed);
     scope.set_or_push("viz_change_triggered", analysis.viz_change_triggered);
+    scope.set_or_push("zoom_direction_shift", analysis.zoom_direction_shift);
+
+    // Additional metrics
+    scope.set_or_push("last_mark", analysis.last_mark as i64);
+    scope.set_or_push("energy_floor", analysis.energy_floor as f64);
 
     // Window bounds
     scope.set_or_push("bounds_w", bounds.w() as f64);

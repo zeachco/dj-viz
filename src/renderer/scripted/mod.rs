@@ -323,7 +323,7 @@ impl ScriptedVisualization {
         self.script_init = false;
     }
 
-    /// Draw the visualization
+    /// Draw the visualization with black background
     pub fn draw(&self, draw: &Draw, _bounds: Rect) {
         // Clear background
         draw.background().color(BLACK);
@@ -332,5 +332,18 @@ impl ScriptedVisualization {
         for cmd in self.commands.borrow().iter() {
             cmd.execute(draw);
         }
+    }
+
+    /// Draw the visualization without background (for overlay use)
+    pub fn draw_overlay(&self, draw: &Draw) {
+        // Execute all queued draw commands without clearing background
+        for cmd in self.commands.borrow().iter() {
+            cmd.execute(draw);
+        }
+    }
+
+    /// Set a custom variable in the script scope
+    pub fn set_var(&mut self, name: &str, value: f64) {
+        self.scope.set_or_push(name, value);
     }
 }

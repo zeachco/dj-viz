@@ -429,7 +429,7 @@ impl Renderer {
         Viz::name(idx)
     }
 
-    pub fn update(&mut self, analysis: &AudioAnalysis) {
+    pub fn update(&mut self, analysis: &AudioAnalysis, bounds: Rect) {
         // Update cooldowns
         if self.cooldown > 0 {
             self.cooldown -= 1;
@@ -534,7 +534,7 @@ impl Renderer {
         }
 
         // Always update debug viz (even if not visible, so it's ready when toggled)
-        self.debug_viz.update(analysis);
+        self.debug_viz.update(analysis, bounds);
     }
 
     /// Draw the primary visualization
