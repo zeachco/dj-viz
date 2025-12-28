@@ -156,9 +156,12 @@ pub struct AudioAnalyzer {
     beat_times: Vec<f32>,      // Timestamps of recent beats (in seconds)
     last_beat_time: f32,       // Last detected beat time
     smoothed_bpm: f32,         // Smoothed BPM estimate
+    locked_bpm: f32,           // Locked BPM (only updates with high confidence)
+    bpm_confidence: u32,       // Number of consistent readings
     frame_time: f32,           // Accumulated time for timestamping
     prev_bass_energy: f32,     // Previous frame's bass energy for onset detection
     bass_energy_avg: f32,      // Running average of bass energy for threshold
+    low_bass_frames: u32,      // Frames with low bass (for break detection)
 
     // Dominant band detection
     dominant_band: usize,           // Current dominant band index
@@ -214,8 +217,8 @@ impl AudioAnalyzer {
             band_bins[i] = (low_bin.max(1), high_bin.min(FFT_SIZE / 2));
         }
 
-        const HISTORY_SIZE: usize = 180; // ~3 seconds at 60fps
-        const BPM_HISTORY_SIZE: usize = 8; // Track last 8 beats for BPM calculation
+        const HISTORY_SIZE: usize = 300; // ~5 seconds at 60fps for stable detection
+        const BPM_HISTORY_SIZE: usize = 16; // Track last 16 beats for stable BPM
 
         Self {
             fft,
@@ -410,14 +413,14 @@ impl AudioAnalyzer {
         // Use sub-bass + bass bands for beat detection (where kick drums live)
         let bass_energy = (bands_raw[0] + bands_raw[1]) / 2.0;
 
-        // Update running average of bass energy (slow adaptation)
-        const BASS_AVG_DECAY: f32 = 0.99;
+        // Update running average of bass energy (very slow adaptation for stability)
+        const BASS_AVG_DECAY: f32 = 0.995; // ~3 seconds to adapt at 60fps
         self.bass_energy_avg = self.bass_energy_avg * BASS_AVG_DECAY + bass_energy * (1.0 - BASS_AVG_DECAY);
 
         // Detect beat: bass energy rising sharply above recent average
         // Onset = current > previous AND current significantly above average
-        const BEAT_THRESHOLD_RATIO: f32 = 1.4; // Current must be 40% above average
-        const MIN_BASS_FOR_BEAT: f32 = 0.15;   // Minimum absolute bass level
+        const BEAT_THRESHOLD_RATIO: f32 = 1.5; // Current must be 50% above average (stricter)
+        const MIN_BASS_FOR_BEAT: f32 = 0.2;    // Minimum absolute bass level (stricter)
         let is_onset = bass_energy > self.prev_bass_energy
             && bass_energy > self.bass_energy_avg * BEAT_THRESHOLD_RATIO
             && bass_energy > MIN_BASS_FOR_BEAT;
@@ -428,40 +431,52 @@ impl AudioAnalyzer {
             let time_since_last_beat = self.frame_time - self.last_beat_time;
 
             // Only count as a beat if enough time has passed (avoid double-counting)
-            // Min 0.25s allows up to 240 BPM, max 1.5s filters out false positives
-            const MIN_BEAT_INTERVAL: f32 = 0.25;
+            // Min 0.3s allows up to 200 BPM, max 1.5s filters out false positives
+            const MIN_BEAT_INTERVAL: f32 = 0.3;
             const MAX_BEAT_INTERVAL: f32 = 1.5;
             if time_since_last_beat >= MIN_BEAT_INTERVAL && time_since_last_beat <= MAX_BEAT_INTERVAL {
                 self.beat_times.push(self.frame_time);
                 self.last_beat_time = self.frame_time;
 
-                // Keep only last 8 beats
-                const MAX_BEAT_HISTORY: usize = 8;
+                // Keep only last 16 beats (~8-16 seconds of history for stable BPM)
+                const MAX_BEAT_HISTORY: usize = 16;
                 if self.beat_times.len() > MAX_BEAT_HISTORY {
                     self.beat_times.remove(0);
                 }
 
                 // Calculate BPM from intervals between beats
-                if self.beat_times.len() >= 4 {
+                // Require more beats for stable reading
+                if self.beat_times.len() >= 8 {
                     let mut intervals = Vec::new();
                     for i in 1..self.beat_times.len() {
                         intervals.push(self.beat_times[i] - self.beat_times[i - 1]);
                     }
 
-                    // Average interval in seconds
-                    let avg_interval: f32 = intervals.iter().sum::<f32>() / intervals.len() as f32;
+                    // Use median interval instead of average (more robust to outliers)
+                    intervals.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                    let median_interval = intervals[intervals.len() / 2];
 
                     // Convert to BPM (beats per minute)
-                    let instant_bpm = 60.0 / avg_interval;
+                    let instant_bpm = 60.0 / median_interval;
 
                     // Clamp to reasonable BPM range (60-200)
                     let clamped_bpm = instant_bpm.clamp(60.0, 200.0);
 
-                    // Smooth the BPM (slow adjustment to avoid jitter)
+                    // Smooth the BPM (very slow adjustment for stability)
                     if self.smoothed_bpm == 0.0 {
                         self.smoothed_bpm = clamped_bpm;
                     } else {
-                        self.smoothed_bpm = self.smoothed_bpm * 0.85 + clamped_bpm * 0.15;
+                        // Only update if within reasonable range of current estimate
+                        // This prevents wild jumps from temporary anomalies
+                        let diff_ratio = (clamped_bpm - self.smoothed_bpm).abs() / self.smoothed_bpm;
+                        if diff_ratio < 0.3 {
+                            // Small change - smooth slowly
+                            self.smoothed_bpm = self.smoothed_bpm * 0.95 + clamped_bpm * 0.05;
+                        } else if diff_ratio < 0.5 {
+                            // Moderate change - smooth very slowly
+                            self.smoothed_bpm = self.smoothed_bpm * 0.98 + clamped_bpm * 0.02;
+                        }
+                        // Large changes (>50%) are ignored as likely errors
                     }
                 }
             } else if time_since_last_beat > MAX_BEAT_INTERVAL {
@@ -594,8 +609,8 @@ impl AudioAnalyzer {
         self.freq_ratio_history[self.history_idx] = freq_ratio;
         self.history_idx = (self.history_idx + 1) % history_size;
 
-        // Recent vs long-term averages
-        let recent_frames = 30;
+        // Recent vs long-term averages (increased window for stability)
+        let recent_frames = 60; // ~1 second at 60fps
         let recent_energy = self.recent_average(&self.energy_history, recent_frames);
         let recent_freq = self.recent_average(&self.freq_ratio_history, recent_frames);
 
@@ -639,10 +654,10 @@ impl AudioAnalyzer {
     /// Detect punch (calm-before-spike): energy was low then suddenly spiked
     /// Returns (punch_detected, energy_floor, rise_rate)
     fn detect_punch(&mut self, current_energy: f32) -> (bool, f32, f32) {
-        const FLOOR_DECAY: f32 = 0.995; // Slowly drift floor up when quiet
-        const FLOOR_ATTACK: f32 = 0.3; // Quickly drop floor on new lows
-        const FLOOR_SPIKE_ATTACK: f32 = 0.15; // Fast rise when energy spikes high
-        const SPIKE_THRESHOLD: f32 = 0.3; // Energy above floor to trigger fast rise
+        const FLOOR_DECAY: f32 = 0.998; // Very slowly drift floor up (~8 sec at 60fps)
+        const FLOOR_ATTACK: f32 = 0.1;  // Moderately drop floor on new lows
+        const FLOOR_SPIKE_ATTACK: f32 = 0.05; // Slow rise when energy spikes high
+        const SPIKE_THRESHOLD: f32 = 0.4; // Energy above floor to trigger fast rise (stricter)
 
         // Get thresholds from config
         let floor_threshold = self.detection_config.punch_floor_threshold();
@@ -717,7 +732,7 @@ impl AudioAnalyzer {
     /// Detect instrument changes via spectral complexity
     /// Returns (instrument_added, instrument_removed, spectral_centroid)
     fn detect_instrument_changes(&mut self, bands: &[f32; NUM_BANDS]) -> (bool, bool, f32) {
-        const SMOOTHING: f32 = 0.85;
+        const SMOOTHING: f32 = 0.95; // Slower smoothing for stability
 
         // Get thresholds from config
         let complexity_threshold = self.detection_config.complexity_threshold();
