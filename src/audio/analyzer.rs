@@ -153,10 +153,12 @@ pub struct AudioAnalyzer {
     prev_energy_diff: f32,
 
     // BPM detection
-    beat_times: Vec<f32>, // Timestamps of recent beats (in seconds)
-    last_beat_time: f32,  // Last detected beat time
-    smoothed_bpm: f32,    // Smoothed BPM estimate
-    frame_time: f32,      // Accumulated time for timestamping
+    beat_times: Vec<f32>,      // Timestamps of recent beats (in seconds)
+    last_beat_time: f32,       // Last detected beat time
+    smoothed_bpm: f32,         // Smoothed BPM estimate
+    frame_time: f32,           // Accumulated time for timestamping
+    prev_bass_energy: f32,     // Previous frame's bass energy for onset detection
+    bass_energy_avg: f32,      // Running average of bass energy for threshold
 
     // Dominant band detection
     dominant_band: usize,           // Current dominant band index
@@ -236,6 +238,8 @@ impl AudioAnalyzer {
             last_beat_time: 0.0,
             smoothed_bpm: 0.0,
             frame_time: 0.0,
+            prev_bass_energy: 0.0,
+            bass_energy_avg: 0.0,
             dominant_band: 0,
             last_dominant_update_time: 0.0,
             last_mark: 600, // Start at max (10 seconds at 60fps)
@@ -402,14 +406,32 @@ impl AudioAnalyzer {
         // Transition detection
         let transition_detected = self.detect_transition(energy_raw, &bands_raw);
 
-        // BPM detection - update when we detect a transition
-        if transition_detected {
+        // BPM detection using bass onset detection
+        // Use sub-bass + bass bands for beat detection (where kick drums live)
+        let bass_energy = (bands_raw[0] + bands_raw[1]) / 2.0;
+
+        // Update running average of bass energy (slow adaptation)
+        const BASS_AVG_DECAY: f32 = 0.99;
+        self.bass_energy_avg = self.bass_energy_avg * BASS_AVG_DECAY + bass_energy * (1.0 - BASS_AVG_DECAY);
+
+        // Detect beat: bass energy rising sharply above recent average
+        // Onset = current > previous AND current significantly above average
+        const BEAT_THRESHOLD_RATIO: f32 = 1.4; // Current must be 40% above average
+        const MIN_BASS_FOR_BEAT: f32 = 0.15;   // Minimum absolute bass level
+        let is_onset = bass_energy > self.prev_bass_energy
+            && bass_energy > self.bass_energy_avg * BEAT_THRESHOLD_RATIO
+            && bass_energy > MIN_BASS_FOR_BEAT;
+
+        self.prev_bass_energy = bass_energy;
+
+        if is_onset {
             let time_since_last_beat = self.frame_time - self.last_beat_time;
 
             // Only count as a beat if enough time has passed (avoid double-counting)
-            // Minimum interval: 60bpm = 1 beat per second, so min 0.3s to allow up to 200bpm
-            const MIN_BEAT_INTERVAL: f32 = 0.3;
-            if time_since_last_beat >= MIN_BEAT_INTERVAL {
+            // Min 0.25s allows up to 240 BPM, max 1.5s filters out false positives
+            const MIN_BEAT_INTERVAL: f32 = 0.25;
+            const MAX_BEAT_INTERVAL: f32 = 1.5;
+            if time_since_last_beat >= MIN_BEAT_INTERVAL && time_since_last_beat <= MAX_BEAT_INTERVAL {
                 self.beat_times.push(self.frame_time);
                 self.last_beat_time = self.frame_time;
 
@@ -420,7 +442,7 @@ impl AudioAnalyzer {
                 }
 
                 // Calculate BPM from intervals between beats
-                if self.beat_times.len() >= 2 {
+                if self.beat_times.len() >= 4 {
                     let mut intervals = Vec::new();
                     for i in 1..self.beat_times.len() {
                         intervals.push(self.beat_times[i] - self.beat_times[i - 1]);
@@ -432,13 +454,19 @@ impl AudioAnalyzer {
                     // Convert to BPM (beats per minute)
                     let instant_bpm = 60.0 / avg_interval;
 
+                    // Clamp to reasonable BPM range (60-200)
+                    let clamped_bpm = instant_bpm.clamp(60.0, 200.0);
+
                     // Smooth the BPM (slow adjustment to avoid jitter)
                     if self.smoothed_bpm == 0.0 {
-                        self.smoothed_bpm = instant_bpm;
+                        self.smoothed_bpm = clamped_bpm;
                     } else {
-                        self.smoothed_bpm = self.smoothed_bpm * 0.85 + instant_bpm * 0.15;
+                        self.smoothed_bpm = self.smoothed_bpm * 0.85 + clamped_bpm * 0.15;
                     }
                 }
+            } else if time_since_last_beat > MAX_BEAT_INTERVAL {
+                // Reset beat tracking if too long since last beat
+                self.last_beat_time = self.frame_time;
             }
         }
 
