@@ -190,9 +190,10 @@ pub struct AudioAnalyzer {
 
     // Full spectrum tracking (pre-allocated, reused each frame)
     spectrum: Vec<f32>,
+    prev_spectrum: Vec<f32>,
     spectrum_diff: Vec<f32>,
-    spectrum_mins: Vec<f32>,
-    spectrum_maxs: Vec<f32>,
+    spectrum_min: f32,
+    spectrum_max: f32,
 
     // Detection configuration (from config file)
     detection_config: DetectionConfig,
@@ -265,9 +266,10 @@ impl AudioAnalyzer {
             prev_spectral_complexity: 0.0,
             // Full spectrum tracking (pre-allocated)
             spectrum: vec![0.0; SPECTRUM_SIZE],
+            prev_spectrum: vec![0.0; SPECTRUM_SIZE],
             spectrum_diff: vec![0.0; SPECTRUM_SIZE],
-            spectrum_mins: vec![0.0; SPECTRUM_SIZE],
-            spectrum_maxs: vec![0.0; SPECTRUM_SIZE],
+            spectrum_min: 0.0,
+            spectrum_max: 0.0,
             // Detection config
             detection_config,
         }
@@ -351,34 +353,44 @@ impl AudioAnalyzer {
         const SPECTRUM_MIN_DRIFT: f32 = 0.99;   // Min adapts in ~1-2 seconds
         const SPECTRUM_MAX_DRIFT: f32 = 0.999;  // Max decays very slowly (~10 sec to 50%) to avoid spikes during quiet moments
 
+        // First pass: compute rough normalized values and find current frame's min/max
+        let mut frame_min = f32::MAX;
+        let mut frame_max = f32::MIN;
         for i in 1..SPECTRUM_SIZE {
-            // Get magnitude in dB scale
             let magnitude = self.fft_buffer[i].norm_sqr();
             let db = 10.0 * (magnitude + 1e-10).log10();
             let rough_normalized = ((db + 100.0) / 160.0).clamp(0.0, 1.0);
+            // Temporarily store rough values
+            self.spectrum[i] = rough_normalized;
+            frame_min = frame_min.min(rough_normalized);
+            frame_max = frame_max.max(rough_normalized);
+        }
 
-            // Adaptive min/max tracking per bin
-            if rough_normalized < self.spectrum_mins[i] || self.spectrum_mins[i] == 0.0 {
-                self.spectrum_mins[i] = rough_normalized;
-            } else {
-                self.spectrum_mins[i] =
-                    self.spectrum_mins[i] * SPECTRUM_MIN_DRIFT + rough_normalized * (1.0 - SPECTRUM_MIN_DRIFT);
-            }
+        // Update global min/max with adaptive tracking
+        if frame_min < self.spectrum_min || self.spectrum_min == 0.0 {
+            self.spectrum_min = frame_min;
+        } else {
+            self.spectrum_min =
+                self.spectrum_min * SPECTRUM_MIN_DRIFT + frame_min * (1.0 - SPECTRUM_MIN_DRIFT);
+        }
 
-            if rough_normalized > self.spectrum_maxs[i] {
-                self.spectrum_maxs[i] = rough_normalized;
-            } else {
-                self.spectrum_maxs[i] =
-                    self.spectrum_maxs[i] * SPECTRUM_MAX_DRIFT + rough_normalized * (1.0 - SPECTRUM_MAX_DRIFT);
-            }
+        if frame_max > self.spectrum_max {
+            self.spectrum_max = frame_max;
+        } else {
+            self.spectrum_max =
+                self.spectrum_max * SPECTRUM_MAX_DRIFT + frame_max * (1.0 - SPECTRUM_MAX_DRIFT);
+        }
 
-            // Normalize to 0-1 using tracked range
-            let range = (self.spectrum_maxs[i] - self.spectrum_mins[i]).max(0.01);
-            let prev_val = self.spectrum[i];
-            self.spectrum[i] = ((rough_normalized - self.spectrum_mins[i]) / range).clamp(0.0, 1.0);
-
-            // Compute diff from previous frame (store previous before overwriting)
-            self.spectrum_diff[i] = self.spectrum[i] - prev_val;
+        // Second pass: normalize all values using global min/max and compute diff
+        let range = (self.spectrum_max - self.spectrum_min).max(0.01);
+        for i in 1..SPECTRUM_SIZE {
+            let rough_normalized = self.spectrum[i];
+            let normalized = ((rough_normalized - self.spectrum_min) / range).clamp(0.0, 1.0);
+            // Compute diff from previous frame's normalized value
+            self.spectrum_diff[i] = normalized - self.prev_spectrum[i];
+            // Store current for next frame's diff calculation
+            self.prev_spectrum[i] = normalized;
+            self.spectrum[i] = normalized;
         }
 
         // Smooth bands (fast attack, slower decay)
