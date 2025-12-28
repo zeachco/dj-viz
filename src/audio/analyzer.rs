@@ -170,6 +170,7 @@ pub struct AudioAnalyzer {
     // Drastic band change detection (last_mark)
     last_mark: u32,                    // Frames since last drastic change
     reference_bands: [f32; NUM_BANDS], // Reference bands for comparison
+    viz_change_cooldown: u32,          // Cooldown frames before viz_change can trigger again
 
     // Frame skipping for performance
     frame_count: u32,
@@ -250,6 +251,7 @@ impl AudioAnalyzer {
             last_dominant_update_time: 0.0,
             last_mark: 600, // Start at max (10 seconds at 60fps)
             reference_bands: [0.0; NUM_BANDS],
+            viz_change_cooldown: 0,
             frame_count: 0,
             last_analysis: AudioAnalysis::default(),
             // Punch detection
@@ -346,8 +348,8 @@ impl AudioAnalyzer {
 
         // Calculate full spectrum magnitudes (for visualizations that want specific frequencies)
         // Reuse pre-allocated buffers to avoid allocations per frame
-        const SPECTRUM_MIN_DRIFT: f32 = 0.99;
-        const SPECTRUM_MAX_DRIFT: f32 = 0.99;
+        const SPECTRUM_MIN_DRIFT: f32 = 0.99;   // Min adapts in ~1-2 seconds
+        const SPECTRUM_MAX_DRIFT: f32 = 0.999;  // Max decays very slowly (~10 sec to 50%) to avoid spikes during quiet moments
 
         for i in 1..SPECTRUM_SIZE {
             // Get magnitude in dB scale
@@ -544,7 +546,7 @@ impl AudioAnalyzer {
         const MIN_DIVISOR: f32 = 1.0; // Minimum divisor to keep threshold activatable
         const MAX_DIVISOR: f32 = 60.0; // Maximum divisor (at 600 steps -> 600/60 = 10x easier)
         const BASE_THRESHOLD: f32 = 2.0; // Base threshold for detecting drastic change
-        const MIN_THRESHOLD: f32 = 0.15; // Minimum threshold to ensure effort is required
+        const MIN_THRESHOLD: f32 = 0.30; // Minimum threshold to ensure effort is required (stricter)
 
         // Increment last_mark (capped at MAX_MARK_STEPS)
         self.last_mark = (self.last_mark + 1).min(MAX_MARK_STEPS);
@@ -569,10 +571,22 @@ impl AudioAnalyzer {
         // Zoom direction shift only happens when last_mark is 1 (drastic change just occurred)
         let zoom_direction_shift = self.last_mark == 1;
 
+        // Decrement viz_change cooldown
+        if self.viz_change_cooldown > 0 {
+            self.viz_change_cooldown -= 1;
+        }
+
         // Visualization change triggers when zoom shift happens with high energy
+        // Requires cooldown to have expired (prevents rapid re-triggering)
         const VIZ_CHANGE_ENERGY_THRESHOLD: f32 = 0.95;
-        let viz_change_triggered =
-            zoom_direction_shift && self.smoothed_energy >= VIZ_CHANGE_ENERGY_THRESHOLD;
+        const VIZ_CHANGE_COOLDOWN_FRAMES: u32 = 180; // 3 seconds at 60fps
+        let viz_change_triggered = zoom_direction_shift
+            && self.smoothed_energy >= VIZ_CHANGE_ENERGY_THRESHOLD
+            && self.viz_change_cooldown == 0;
+
+        if viz_change_triggered {
+            self.viz_change_cooldown = VIZ_CHANGE_COOLDOWN_FRAMES;
+        }
 
         // New detection methods
         let (punch_detected, energy_floor, rise_rate) = self.detect_punch(self.smoothed_energy);
