@@ -79,7 +79,7 @@ pub use black_hole::BlackHole;
 pub use crt_phosphor::CrtPhosphor;
 pub use dancing_skeletons::DancingSkeletons;
 pub use debug::DebugViz;
-pub use effects::FeedbackRenderer;
+pub use effects::{FeedbackRenderer, IntensityEffect};
 pub use fractal_tree::FractalTree;
 pub use freq_mandala::FreqMandala;
 pub use gravity_flames::GravityFlames;

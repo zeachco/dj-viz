@@ -7,6 +7,8 @@
 use nannou::prelude::*;
 use nannou::wgpu;
 
+use super::IntensityEffect;
+
 const MAX_OVERLAYS: usize = 9;
 
 /// Vertex for fullscreen quad
@@ -82,6 +84,12 @@ pub struct FeedbackRenderer {
 
     // For displaying result to screen
     reshaper: wgpu::TextureReshaper,
+
+    // Intensity effect for emotional visualization
+    intensity_effect: IntensityEffect,
+    // Extra texture for intensity effect output
+    intensity_texture: wgpu::Texture,
+    intensity_texture_view: wgpu::TextureView,
 
     // Parameters
     pub fade: f32,
@@ -371,6 +379,11 @@ impl FeedbackRenderer {
             multiview: None,
         });
 
+        // Create intensity effect
+        let intensity_effect = IntensityEffect::new(device);
+        let intensity_texture = Self::create_texture(device, size);
+        let intensity_texture_view = intensity_texture.view().build();
+
         Self {
             textures,
             texture_views,
@@ -388,6 +401,9 @@ impl FeedbackRenderer {
             burn_pipeline,
             burn_bind_group_layout,
             reshaper,
+            intensity_effect,
+            intensity_texture,
+            intensity_texture_view,
             fade,
             scale,
             size,
@@ -438,6 +454,11 @@ impl FeedbackRenderer {
             _padding: [0.0; 2],
         };
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
+    }
+
+    /// Update intensity effect parameters from audio analysis.
+    pub fn update_intensity(&mut self, intensity: f32, momentum: f32, bass: f32, delta_time: f32) {
+        self.intensity_effect.update(intensity, momentum, bass, delta_time);
     }
 
     /// Handle window resize by recreating textures.
@@ -512,6 +533,10 @@ impl FeedbackRenderer {
                     .build_from_texture_descriptor(device, t.descriptor())
             })
             .collect();
+
+        // Recreate intensity texture
+        self.intensity_texture = Self::create_texture(device, size);
+        self.intensity_texture_view = self.intensity_texture.view().build();
 
         self.current_idx = 0;
     }
@@ -666,10 +691,19 @@ impl FeedbackRenderer {
         // If no overlays, final result is still in curr_idx
         let final_idx = if num_overlays > 0 { read_idx } else { curr_idx };
 
-        // Pass 4: Copy final feedback result to frame
+        // Pass 4: Apply intensity effects to the final result
+        self.intensity_effect.apply(
+            device,
+            &mut encoder,
+            queue,
+            &self.texture_views[final_idx],
+            &self.intensity_texture_view,
+        );
+
+        // Pass 5: Copy intensity-processed result to frame
         let reshaper = wgpu::TextureReshaper::new(
             device,
-            &self.texture_views[final_idx],
+            &self.intensity_texture_view,
             1,
             wgpu::TextureSampleType::Float { filterable: true },
             frame_sample_count,
