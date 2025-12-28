@@ -301,6 +301,10 @@ impl ScriptedVisualization {
         // Update script_init flag (true on first frame after load/reload)
         self.scope.set_or_push("script_init", self.script_init);
 
+        // Track scope size before running script so we can rewind after
+        // This prevents `let` variables in the script from accumulating
+        let scope_len = self.scope.len();
+
         // Run the script
         if let Some(ref ast) = self.ast {
             if let Err(e) = self.engine.run_ast_with_scope(&mut self.scope, ast) {
@@ -311,6 +315,9 @@ impl ScriptedVisualization {
                 }
             }
         }
+
+        // Rewind scope to remove script-local variables (prevents memory leak)
+        self.scope.rewind(scope_len);
 
         // Clear init flag after first successful frame
         self.script_init = false;
