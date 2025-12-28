@@ -38,10 +38,6 @@ pub struct AudioAnalysis {
     /// Bands normalized relative to tracked min/max range (can be outside 0-1)
     /// If a band oscillates between 0.6-0.9, this maps it to 0.0-1.0 range
     pub bands_normalized: [f32; NUM_BANDS],
-    /// Tracked minimum values for each band
-    pub band_mins: [f32; NUM_BANDS],
-    /// Tracked maximum values for each band
-    pub band_maxs: [f32; NUM_BANDS],
     /// Overall energy/volume (0-1)
     pub energy: f32,
     /// Whether a musical transition was detected
@@ -93,8 +89,6 @@ impl Default for AudioAnalysis {
             spectrum: vec![0.0; SPECTRUM_SIZE],
             spectrum_diff: vec![0.0; SPECTRUM_SIZE],
             bands_normalized: [0.0; NUM_BANDS],
-            band_mins: [0.0; NUM_BANDS],
-            band_maxs: [0.0; NUM_BANDS],
             energy: 0.0,
             transition_detected: false,
             bass: 0.0,
@@ -631,8 +625,6 @@ impl AudioAnalyzer {
             spectrum: self.spectrum.clone(),
             spectrum_diff: self.spectrum_diff.clone(),
             bands_normalized,
-            band_mins: self.band_mins,
-            band_maxs: self.band_maxs,
             energy: self.smoothed_energy,
             transition_detected,
             bass,
