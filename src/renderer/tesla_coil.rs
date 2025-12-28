@@ -281,9 +281,12 @@ impl Visualization for TeslaCoil {
 
         self.treble = self.treble * 0.8 + analysis.treble * 0.2;
 
-        // Kick intensity combines bass and low-mids
+        // Kick intensity combines bass and low-mids, boosted on punch detection
         let kick = (self.bass + analysis.bands_normalized[2] * 0.5) / 1.5;
-        if kick > self.kick_intensity {
+        if analysis.punch_detected {
+            // Punch gives maximum intensity for dramatic lightning burst
+            self.kick_intensity = 1.0;
+        } else if kick > self.kick_intensity {
             self.kick_intensity = self.kick_intensity * 0.3 + kick * 0.7;
         } else {
             self.kick_intensity = self.kick_intensity * 0.9 + kick * 0.1;

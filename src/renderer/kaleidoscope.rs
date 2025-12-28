@@ -113,10 +113,16 @@ impl Visualization for Kaleidoscope {
         self.bass = self.bass * 0.7 + analysis.bass * 0.3;
         self.treble = self.treble * 0.8 + analysis.treble * 0.2;
 
-        // Rotation accelerates with bass, decays over time
+        // Rotation syncs to BPM when available, with bass-based acceleration
+        let base_rotation = if analysis.bpm > 0.0 {
+            // One rotation per 8 beats at detected BPM
+            (analysis.bpm / 60.0) * std::f32::consts::TAU / (8.0 * 60.0)
+        } else {
+            0.005
+        };
         self.rotation_velocity += analysis.bass * 0.02;
         self.rotation_velocity *= 0.95; // Decay
-        self.rotation += 0.005 + self.rotation_velocity;
+        self.rotation += base_rotation + self.rotation_velocity;
 
         // Zoom pulses with bass
         let target_zoom = 1.0 + self.bass * 0.3;

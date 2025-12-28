@@ -192,8 +192,10 @@ impl Visualization for BlackHole {
         // Disk brightness follows energy
         self.disk_brightness = 0.5 + self.energy * 0.5;
 
-        // Jet intensity on bass hits
-        if analysis.bass > 0.6 {
+        // Jet intensity on bass hits, maximum on punch detection
+        if analysis.punch_detected {
+            self.jet_intensity = 1.0; // Full jets on punch (calm-to-spike)
+        } else if analysis.bass > 0.6 {
             self.jet_intensity = analysis.bass;
         } else {
             self.jet_intensity *= 0.92;

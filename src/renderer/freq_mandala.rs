@@ -100,8 +100,14 @@ impl Visualization for FreqMandala {
 
         self.energy = self.energy * 0.9 + analysis.energy * 0.1;
 
-        // Rotation speeds up with energy
-        self.rotation += 0.003 + self.energy * 0.02;
+        // Rotation syncs to BPM when available, falls back to energy-based
+        let base_rotation = if analysis.bpm > 0.0 {
+            // One full rotation per 16 beats at detected BPM (slow, meditative)
+            (analysis.bpm / 60.0) * std::f32::consts::TAU / (16.0 * 60.0)
+        } else {
+            0.003 + self.energy * 0.02
+        };
+        self.rotation += base_rotation;
 
         // Bloom pulses with bass
         let target_bloom = self.bass * 0.5;

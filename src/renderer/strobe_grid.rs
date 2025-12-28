@@ -135,9 +135,11 @@ impl Visualization for StrobeGrid {
 
         self.treble = self.treble * 0.7 + analysis.treble * 0.3;
 
-        // Strobe effect on bass hits
-        if analysis.bass > 0.5 {
-            self.strobe_intensity = 1.0;
+        // Strobe effect on bass hits OR punch detection (dramatic calm-to-spike)
+        if analysis.punch_detected {
+            self.strobe_intensity = 1.0; // Full strobe on punch
+        } else if analysis.bass > 0.5 {
+            self.strobe_intensity = 0.8;
         } else {
             self.strobe_intensity *= 0.85;
         }

@@ -140,3 +140,12 @@ Audio device and PipeWire stream selections are saved to `~/.dj-viz.toml`.
 |:---:|:---:|:---:|
 | <img src="assets/preview_1.png" width="250"> | <img src="assets/preview_2.png" width="250"> | <img src="assets/preview_3.png" width="250"> |
 | <img src="assets/preview_4.png" width="250"> | <img src="assets/preview_5.png" width="250"> | <img src="assets/preview_6.png" width="250"> |
+| <img src="assets/preview_7.png" width="250"> | <img src="assets/preview_8.png" width="250"> | <img src="assets/preview_9.png" width="250"> |
+
+## Debugger Script
+
+You can press `S` to activate custom script written in Rhai script (lua like but for rust).
+
+The debug overlay is a Rhai script itself, pressing `D` would show this overlay
+
+<img src="assets/debug.png"> 

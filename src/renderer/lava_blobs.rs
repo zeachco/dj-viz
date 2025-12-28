@@ -159,11 +159,13 @@ impl Visualization for LavaBlobs {
         self.bass = self.bass * 0.7 + analysis.bass * 0.3;
         self.energy = self.energy * 0.9 + analysis.energy * 0.1;
 
-        // Hue cycles with mids
+        // Hue cycles with mids, shifted by spectral centroid (warm for bass, cool for treble)
+        // Spectral centroid ranges roughly 200-4000 Hz
+        let centroid_normalized = ((analysis.spectral_centroid - 200.0) / 3800.0).clamp(0.0, 1.0);
+        // Low centroid = warm (reds/oranges, hue 0-60), high centroid = cool (blues/purples, hue 180-280)
+        let base_hue = centroid_normalized * 200.0; // 0=warm, 200=cool
         self.hue_offset += 0.3 + analysis.mids * 1.5;
-        if self.hue_offset > 360.0 {
-            self.hue_offset -= 360.0;
-        }
+        self.hue_offset = (self.hue_offset + base_hue * 0.1) % 360.0;
 
         let half_w = self.bounds_w / 2.0;
         let half_h = self.bounds_h / 2.0;

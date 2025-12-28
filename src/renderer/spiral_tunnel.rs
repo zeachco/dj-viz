@@ -94,11 +94,21 @@ impl Visualization for SpiralTunnel {
         self.treble = self.treble * 0.8 + analysis.treble * 0.2;
         self.energy = self.energy * 0.9 + analysis.energy * 0.1;
 
-        // Rotation speeds up with energy
-        self.rotation += 0.01 + self.energy * 0.03;
+        // Rotation syncs to BPM when available, falls back to energy-based
+        let bpm_rotation = if analysis.bpm > 0.0 {
+            // Rotate at a rate proportional to BPM (one full rotation per 4 beats at 120 BPM)
+            (analysis.bpm / 120.0) * 0.02
+        } else {
+            0.01 + self.energy * 0.03
+        };
+        self.rotation += bpm_rotation;
 
-        // Zoom pulses with bass (creates "punch" effect)
-        let target_zoom = 1.0 + self.bass * 0.4;
+        // Zoom pulses with bass, dramatic zoom on punch detection
+        let target_zoom = if analysis.punch_detected {
+            1.5 // Dramatic zoom on punch
+        } else {
+            1.0 + self.bass * 0.4
+        };
         self.zoom = self.zoom * 0.85 + target_zoom * 0.15;
 
         // Forward motion through tunnel

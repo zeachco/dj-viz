@@ -92,8 +92,13 @@ impl Visualization for PsychedelicSpiral {
         self.mids = self.mids * 0.75 + analysis.mids * 0.25;
         self.energy = self.energy * 0.85 + analysis.energy * 0.15;
 
-        // Rotation speed based on energy
-        let rotation_speed = 0.015 + self.energy * 0.04;
+        // Rotation speed syncs to BPM when available, falls back to energy-based
+        let rotation_speed = if analysis.bpm > 0.0 {
+            // Rotate proportional to BPM (faster at higher BPM)
+            (analysis.bpm / 120.0) * 0.025
+        } else {
+            0.015 + self.energy * 0.04
+        };
         self.rotation += rotation_speed;
 
         // Tunnel scrolls inward with bass pulses

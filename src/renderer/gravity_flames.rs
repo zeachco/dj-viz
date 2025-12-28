@@ -174,8 +174,16 @@ impl Visualization for GravityFlames {
         // Remove dead particles
         self.particles.retain(|p| p.age < PARTICLE_MAX_AGE);
 
-        // Spawn new particles based on energy
-        if self.energy > 0.3 {
+        // Spawn new particles based on energy, burst on punch detection
+        if analysis.punch_detected {
+            // Big burst on punch - spawn particles in all directions
+            let mut rng = rand::rng();
+            let burst_count = (NUM_PARTICLES / 4).min(NUM_PARTICLES - self.particles.len());
+            for _ in 0..burst_count {
+                let band_idx = rng.random_range(0..8);
+                self.spawn_particle(band_idx);
+            }
+        } else if self.energy > 0.3 {
             let mut rng = rand::rng();
             let mut spawn_chance = self.energy * SPAWN_RATE;
 
