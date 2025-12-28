@@ -58,7 +58,7 @@ fn register_var_api(engine: &mut Engine, store: VarStore) {
 const RELOAD_CHECK_INTERVAL: u32 = 30;
 
 /// Maximum operations per script execution (prevents infinite loops)
-const MAX_OPERATIONS: u64 = 100_000;
+const MAX_OPERATIONS: u64 = 200_000;
 
 /// Manages Rhai script discovery and cycling
 pub struct ScriptManager {

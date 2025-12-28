@@ -88,17 +88,19 @@ if transition_detected {
 set("hue_offset", hue_offset);
 
 // Spawn particles on bass hits
-if bass > 0.5 && rand() < bass * 0.3 {
-    let p = #{
-        x: rand_range(-bounds_w / 2.0, bounds_w / 2.0),
-        y: bounds_bottom,
-        vx: rand_range(-3.0, 3.0),
-        vy: rand_range(3.0, 8.0) * (0.5 + bass),
-        size: 15.0 + bass * 40.0,
-        life: 1.0,
-        hue: (rand() + hue_offset) % 1.0
-    };
-    particles.push(p);
+if bass > 0.5 {
+    for i in 0..5 {
+        let p = #{
+            x: rand_range(-bounds_w / 2.0, bounds_w / 2.0),
+            y: bounds_bottom,
+            vx: rand_range(-3.0, 3.0),
+            vy: rand_range(3.0, 8.0) * (0.5 + bass),
+            size: 15.0 + bass * 40.0,
+            life: 1.0,
+            hue: (rand() + hue_offset) % 1.0
+        };
+        particles.push(p);
+    }
 }
 
 // Update and draw particles

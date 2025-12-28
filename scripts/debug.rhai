@@ -97,6 +97,46 @@ for f in freq_marks {
 // Centroid label with frequency
 text(slider_x, slider_y + slider_height + 10.0, "CENTROID", 12, 0.7, 0.7, 0.7, 1.0);
 
+// === SPECTRUM VISUALIZATION (above centroid slider) ===
+let spec_height = 100.0;
+let spec_y_base = slider_y + slider_height + 30.0;  // Above the slider
+let spec_w = slider_w;
+let spec_left = slider_x - slider_w / 2.0;
+
+// Background for spectrum area
+rect(slider_x, spec_y_base + spec_height / 2.0, spec_w, spec_height, 0.1, 0.1, 0.12, 0.7);
+
+// Get spectrum size (256 bins after downsampling)
+let spec_len = spectrum.len();
+if spec_len > 0 {
+    // Draw bars for each spectrum bin (use spec_len directly, not pixels)
+    let bar_w = spec_w / (spec_len * 1.0);  // Force float division
+    for i in 0..spec_len {
+        // Get magnitude and diff for this bin
+        let mag = spectrum[i];
+        let diff = spectrum_diff[i];
+
+        // Height based on magnitude (0-1 -> 0-spec_height)
+        let bar_h = mag * spec_height;
+
+        // Hue based on diff: negative=blue (0.6), zero=green (0.3), positive=red (0.0)
+        let hue = clamp(0.3 - diff * 0.3, 0.0, 0.6);
+        let sat = 0.7 + abs(diff) * 0.3;
+        let light = 0.3 + mag * 0.4;
+
+        let col_rgba = hsla(hue, sat, light, 0.9);
+
+        // Draw bar centered at this bin's position
+        let x = spec_left + (i * 1.0 + 0.5) * bar_w;
+        if bar_h > 0.5 {
+            rect(x, spec_y_base + bar_h / 2.0, bar_w, bar_h, col_rgba[0], col_rgba[1], col_rgba[2], col_rgba[3]);
+        }
+    }
+}
+
+// Spectrum label
+text(slider_x, spec_y_base + spec_height + 12.0, "SPECTRUM", 12, 0.7, 0.7, 0.7, 1.0);
+
 // === RIGHT: Boolean State Indicators ===
 let bool_x = bounds_right - margin - bool_panel_width / 2.0;
 let bool_start_y = bounds_top - margin;
@@ -104,7 +144,7 @@ let bool_spacing = 35.0;
 let indicator_size = 20.0;
 
 // Helper function for drawing boolean indicator
-fn draw_bool_indicator(x, y, label, timer, fade_dur) {
+fn draw_bool_indicator(x, y, label, timer, fade_dur, indicator_size) {
     let progress = timer / fade_dur;
     let is_on = progress > 0.0;
 
@@ -127,17 +167,18 @@ fn draw_bool_indicator(x, y, label, timer, fade_dur) {
     text(x, y, label, 11, 0.7, 0.7, 0.7, 1.0);
 }
 
-draw_bool_indicator(bool_x, bool_start_y, "TRANSITION", tt_transition, fade_duration);
-draw_bool_indicator(bool_x, bool_start_y - bool_spacing, "PUNCH", tt_punch, fade_duration);
-draw_bool_indicator(bool_x, bool_start_y - bool_spacing * 2.0, "BREAK", tt_break, fade_duration);
-draw_bool_indicator(bool_x, bool_start_y - bool_spacing * 3.0, "INST+", tt_inst_add, fade_duration);
-draw_bool_indicator(bool_x, bool_start_y - bool_spacing * 4.0, "INST-", tt_inst_rem, fade_duration);
-draw_bool_indicator(bool_x, bool_start_y - bool_spacing * 5.0, "VIZ CHG", tt_viz_chg, fade_duration);
+draw_bool_indicator(bool_x, bool_start_y, "TRANSITION", tt_transition, fade_duration, indicator_size);
+draw_bool_indicator(bool_x, bool_start_y - bool_spacing, "PUNCH", tt_punch, fade_duration, indicator_size);
+draw_bool_indicator(bool_x, bool_start_y - bool_spacing * 2.0, "BREAK", tt_break, fade_duration, indicator_size);
+draw_bool_indicator(bool_x, bool_start_y - bool_spacing * 3.0, "INST+", tt_inst_add, fade_duration, indicator_size);
+draw_bool_indicator(bool_x, bool_start_y - bool_spacing * 4.0, "INST-", tt_inst_rem, fade_duration, indicator_size);
+draw_bool_indicator(bool_x, bool_start_y - bool_spacing * 5.0, "VIZ CHG", tt_viz_chg, fade_duration, indicator_size);
 
 // === CENTER: Geometry Patterns for All Bands ===
 let center_area_left = bounds_left + margin * 2.0 + meter_width + 20.0;
 let center_area_right = bounds_right - margin - bool_panel_width - 20.0;
-let center_area_bottom = bounds_bottom + margin * 2.0 + slider_height + 20.0;
+// Account for centroid slider + spectrum panel + labels
+let center_area_bottom = bounds_bottom + margin * 2.0 + slider_height + 30.0 + 100.0 + 30.0;
 let center_area_top = bounds_top - margin - 20.0;
 let center_w = center_area_right - center_area_left;
 let center_h = center_area_top - center_area_bottom;
