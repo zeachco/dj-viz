@@ -3,8 +3,8 @@
 //! Manages the interactive fuzzy-search overlay for selecting audio input/output
 //! devices at runtime.
 
-use cpal::traits::{DeviceTrait, HostTrait};
 use crate::ui::text_picker::{PickerItem, TextPickerState};
+use cpal::traits::{DeviceTrait, HostTrait};
 
 /// Represents an audio device entry for search/selection
 #[derive(Clone, Debug)]

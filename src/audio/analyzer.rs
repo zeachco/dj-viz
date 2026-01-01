@@ -7,6 +7,7 @@ use num_complex::Complex;
 use rustfft::{Fft, FftPlanner};
 use std::sync::Arc;
 
+use super::instrument_tracker::{DetectedInstrument, InstrumentTracker, MAX_INSTRUMENTS};
 use crate::utils::DetectionConfig;
 
 /// Number of frequency bands for visualization
@@ -80,6 +81,12 @@ pub struct AudioAnalysis {
     pub instrument_removed: bool,
     /// Weighted average frequency (spectral centroid in Hz)
     pub spectral_centroid: f32,
+
+    // Instrument tracking
+    /// Currently detected and tracked instruments (up to MAX_INSTRUMENTS)
+    pub instruments: Vec<DetectedInstrument>,
+    /// Number of active instruments currently being tracked
+    pub active_instrument_count: usize,
 }
 
 impl Default for AudioAnalysis {
@@ -110,6 +117,9 @@ impl Default for AudioAnalysis {
             instrument_added: false,
             instrument_removed: false,
             spectral_centroid: 1000.0,
+            // Instrument tracking
+            instruments: Vec::new(),
+            active_instrument_count: 0,
         }
     }
 }
@@ -147,15 +157,15 @@ pub struct AudioAnalyzer {
     prev_energy_diff: f32,
 
     // BPM detection
-    beat_times: Vec<f32>,      // Timestamps of recent beats (in seconds)
-    last_beat_time: f32,       // Last detected beat time
-    smoothed_bpm: f32,         // Smoothed BPM estimate
-    locked_bpm: f32,           // Locked BPM (only updates with high confidence)
-    bpm_confidence: u32,       // Number of consistent readings
-    frame_time: f32,           // Accumulated time for timestamping
-    prev_bass_energy: f32,     // Previous frame's bass energy for onset detection
-    bass_energy_avg: f32,      // Running average of bass energy for threshold
-    low_bass_frames: u32,      // Frames with low bass (for break detection)
+    beat_times: Vec<f32>,  // Timestamps of recent beats (in seconds)
+    last_beat_time: f32,   // Last detected beat time
+    smoothed_bpm: f32,     // Smoothed BPM estimate
+    locked_bpm: f32,       // Locked BPM (only updates with high confidence)
+    bpm_confidence: u32,   // Number of consistent readings
+    frame_time: f32,       // Accumulated time for timestamping
+    prev_bass_energy: f32, // Previous frame's bass energy for onset detection
+    bass_energy_avg: f32,  // Running average of bass energy for threshold
+    low_bass_frames: u32,  // Frames with low bass (for break detection)
 
     // Dominant band detection
     dominant_band: usize,           // Current dominant band index
@@ -191,6 +201,9 @@ pub struct AudioAnalyzer {
 
     // Detection configuration (from config file)
     detection_config: DetectionConfig,
+
+    // Instrument tracking
+    instrument_tracker: InstrumentTracker,
 }
 
 impl AudioAnalyzer {
@@ -266,6 +279,8 @@ impl AudioAnalyzer {
             spectrum_max: 0.0,
             // Detection config
             detection_config,
+            // Instrument tracking
+            instrument_tracker: InstrumentTracker::new(sample_rate),
         }
     }
 
@@ -344,8 +359,8 @@ impl AudioAnalyzer {
 
         // Calculate full spectrum magnitudes (for visualizations that want specific frequencies)
         // Reuse pre-allocated buffers to avoid allocations per frame
-        const SPECTRUM_MIN_DRIFT: f32 = 0.99;   // Min adapts in ~1-2 seconds
-        const SPECTRUM_MAX_DRIFT: f32 = 0.999;  // Max decays very slowly (~10 sec to 50%) to avoid spikes during quiet moments
+        const SPECTRUM_MIN_DRIFT: f32 = 0.99; // Min adapts in ~1-2 seconds
+        const SPECTRUM_MAX_DRIFT: f32 = 0.999; // Max decays very slowly (~10 sec to 50%) to avoid spikes during quiet moments
 
         // First pass: compute rough normalized values and find current frame's min/max
         let mut frame_min = f32::MAX;
@@ -427,11 +442,12 @@ impl AudioAnalyzer {
 
         // Update running average of bass energy (very slow adaptation for stability)
         const BASS_AVG_DECAY: f32 = 0.995; // ~3 seconds to adapt at 60fps
-        self.bass_energy_avg = self.bass_energy_avg * BASS_AVG_DECAY + bass_energy * (1.0 - BASS_AVG_DECAY);
+        self.bass_energy_avg =
+            self.bass_energy_avg * BASS_AVG_DECAY + bass_energy * (1.0 - BASS_AVG_DECAY);
 
         // Track low bass periods (breaks in techno)
         const LOW_BASS_THRESHOLD: f32 = 0.15; // Bass below this = likely in a break
-        const BREAK_FRAMES: u32 = 30;         // ~0.5 sec of low bass = break
+        const BREAK_FRAMES: u32 = 30; // ~0.5 sec of low bass = break
         if bass_energy < LOW_BASS_THRESHOLD {
             self.low_bass_frames = self.low_bass_frames.saturating_add(1);
         } else {
@@ -451,7 +467,7 @@ impl AudioAnalyzer {
             // Normal beat detection when not in break
             // Detect beat: bass energy rising sharply above recent average
             const BEAT_THRESHOLD_RATIO: f32 = 1.5; // Current must be 50% above average
-            const MIN_BASS_FOR_BEAT: f32 = 0.2;    // Minimum absolute bass level
+            const MIN_BASS_FOR_BEAT: f32 = 0.2; // Minimum absolute bass level
             let is_onset = bass_energy > self.prev_bass_energy
                 && bass_energy > self.bass_energy_avg * BEAT_THRESHOLD_RATIO
                 && bass_energy > MIN_BASS_FOR_BEAT;
@@ -463,7 +479,9 @@ impl AudioAnalyzer {
                 // Min 0.3s allows up to 200 BPM, max 1.5s filters out false positives
                 const MIN_BEAT_INTERVAL: f32 = 0.3;
                 const MAX_BEAT_INTERVAL: f32 = 1.5;
-                if time_since_last_beat >= MIN_BEAT_INTERVAL && time_since_last_beat <= MAX_BEAT_INTERVAL {
+                if time_since_last_beat >= MIN_BEAT_INTERVAL
+                    && time_since_last_beat <= MAX_BEAT_INTERVAL
+                {
                     self.beat_times.push(self.frame_time);
                     self.last_beat_time = self.frame_time;
 
@@ -505,7 +523,8 @@ impl AudioAnalyzer {
                         if self.smoothed_bpm == 0.0 {
                             self.smoothed_bpm = clamped_bpm;
                         } else {
-                            let diff_ratio = (clamped_bpm - self.smoothed_bpm).abs() / self.smoothed_bpm;
+                            let diff_ratio =
+                                (clamped_bpm - self.smoothed_bpm).abs() / self.smoothed_bpm;
                             if diff_ratio < 0.15 {
                                 // Very close - update normally
                                 self.smoothed_bpm = self.smoothed_bpm * 0.9 + clamped_bpm * 0.1;
@@ -620,6 +639,12 @@ impl AudioAnalyzer {
             }
         }
 
+        // Update instrument tracking
+        let instruments = self
+            .instrument_tracker
+            .update(&self.smoothed_bands, &self.spectrum);
+        let active_instrument_count = instruments.len();
+
         self.last_analysis = AudioAnalysis {
             bands: self.smoothed_bands,
             spectrum: self.spectrum.clone(),
@@ -644,6 +669,9 @@ impl AudioAnalyzer {
             instrument_added,
             instrument_removed,
             spectral_centroid,
+            // Instrument tracking
+            instruments,
+            active_instrument_count,
         };
 
         self.last_analysis.clone()
@@ -730,8 +758,8 @@ impl AudioAnalyzer {
                 self.energy_floor * (1.0 - FLOOR_ATTACK) + current_energy * FLOOR_ATTACK;
         } else if energy_gap > SPIKE_THRESHOLD {
             // Energy spiked high - quickly raise floor to follow
-            self.energy_floor =
-                self.energy_floor * (1.0 - FLOOR_SPIKE_ATTACK) + current_energy * FLOOR_SPIKE_ATTACK;
+            self.energy_floor = self.energy_floor * (1.0 - FLOOR_SPIKE_ATTACK)
+                + current_energy * FLOOR_SPIKE_ATTACK;
         } else {
             // Slowly drift floor up toward current
             self.energy_floor =
