@@ -16,10 +16,14 @@ const NUM_PARTICLES: usize = if cfg!(debug_assertions) { 200 } else { 500 };
 const SPAWN_RATE: f32 = 0.8;
 /// Maximum particle lifetime in frames (~2 seconds at 60fps)
 const PARTICLE_MAX_AGE: f32 = 120.0;
-/// Base outward velocity
-const BASE_VELOCITY: f32 = 2.0;
+/// Base outward velocity (reduced for fire-like movement)
+const BASE_VELOCITY: f32 = 0.8;
 /// How much energy affects velocity
-const VELOCITY_ENERGY_MULTIPLIER: f32 = 8.0;
+const VELOCITY_ENERGY_MULTIPLIER: f32 = 3.0;
+/// Turbulence strength for random wandering
+const TURBULENCE: f32 = 0.4;
+/// Upward drift to simulate heat rising
+const UPWARD_DRIFT: f32 = 0.3;
 /// Radians per frame for base angle rotation (~21 sec full rotation)
 const ROTATION_SPEED: f32 = 0.01;
 /// Velocity decay per frame (zero-G drift)
@@ -69,33 +73,42 @@ impl Default for GravityFlames {
 }
 
 impl GravityFlames {
-    /// Map temperature (0-1) to flame color gradient
+    /// Map temperature (0-1) to flame color with slow hue cycling
     fn temperature_to_color(&self, temp: f32) -> Srgba<u8> {
         let temp = temp.clamp(0.0, 1.0);
 
+        // Slow hue shift based on frame count (full cycle ~10 seconds at 60fps)
+        let hue_shift = (self.frame_count as f32 * 0.01).sin() * 0.15;
+
         let (r, g, b) = if temp > 0.9 {
-            // White hot (0.9-1.0)
+            // White hot (0.9-1.0) - no hue shift
             let t = (temp - 0.9) / 0.1;
             (1.0, 1.0, 0.9 + t * 0.1)
         } else if temp > 0.7 {
-            // Yellow (0.7-0.9)
+            // Yellow (0.7-0.9) - slight hue shift
             let t = (temp - 0.7) / 0.2;
-            (1.0, 1.0, 0.7 + t * 0.2)
+            let shift_amount = 1.0 - t; // less shift closer to white
+            (1.0, 1.0 - hue_shift * shift_amount * 0.3, 0.7 + t * 0.2)
         } else if temp > 0.4 {
-            // Orange (0.4-0.7)
+            // Orange (0.4-0.7) - hue shifts between orange/magenta
             let t = (temp - 0.4) / 0.3;
-            (1.0, 0.5 + t * 0.5, 0.1 + t * 0.6)
+            (1.0, (0.5 + t * 0.5) * (1.0 - hue_shift * 0.5), 0.1 + t * 0.6 + hue_shift * 0.4)
         } else if temp > 0.15 {
-            // Red (0.15-0.4)
+            // Red (0.15-0.4) - hue shifts between red/magenta
             let t = (temp - 0.15) / 0.25;
-            (0.8 + t * 0.2, 0.1 + t * 0.4, 0.05 + t * 0.05)
+            (0.8 + t * 0.2, (0.1 + t * 0.4) * (1.0 - hue_shift * 0.6), 0.05 + t * 0.05 + hue_shift * 0.5)
         } else {
-            // Dark red (0.0-0.15)
+            // Dark red/magenta (0.0-0.15)
             let t = temp / 0.15;
-            (0.4 + t * 0.4, t * 0.1, 0.0)
+            (0.4 + t * 0.4, t * 0.1 * (1.0 - hue_shift * 0.5), hue_shift * 0.3)
         };
 
-        srgba((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8, 255)
+        srgba(
+            (r.clamp(0.0, 1.0) * 255.0) as u8,
+            (g.clamp(0.0, 1.0) * 255.0) as u8,
+            (b.clamp(0.0, 1.0) * 255.0) as u8,
+            255,
+        )
     }
 
     /// Spawn a new particle
@@ -105,8 +118,8 @@ impl GravityFlames {
         // Calculate base angle for this frequency band
         let angle = (band_idx as f32 / 8.0) * TAU + self.base_angle_rotation;
 
-        // Add random jitter to angle (±15 degrees)
-        let jitter = rng.random_range(-PI / 12.0..PI / 12.0);
+        // Add random jitter to angle (±45 degrees for more organic spread)
+        let jitter = rng.random_range(-PI / 4.0..PI / 4.0);
         let final_angle = angle + jitter;
 
         // Calculate velocity magnitude
@@ -154,21 +167,29 @@ impl Visualization for GravityFlames {
         }
 
         // Update existing particles
+        let mut rng = rand::rng();
         for particle in &mut self.particles {
             particle.age += 1.0;
 
+            // Add turbulence - random wandering in any direction
+            let drift_angle = rng.random_range(0.0..TAU);
+            let drift_strength = rng.random_range(0.0..UPWARD_DRIFT * 2.0);
+            particle.velocity.x += drift_angle.cos() * drift_strength + rng.random_range(-TURBULENCE..TURBULENCE);
+            particle.velocity.y += drift_angle.sin() * drift_strength + rng.random_range(-TURBULENCE..TURBULENCE);
+
+            // Apply drag (slows down movement)
+            particle.velocity *= DRAG_COEFFICIENT;
+
             // Apply velocity to position
             particle.position += particle.velocity;
-
-            // Apply drag (zero-gravity drift)
-            particle.velocity *= DRAG_COEFFICIENT;
 
             // Update temperature based on age (cools as it ages)
             let age_factor = particle.age / PARTICLE_MAX_AGE;
             particle.temperature = (1.0 - age_factor).max(0.0);
 
-            // Size shrinks as it ages
-            particle.size = 3.0 + (1.0 - age_factor) * 5.0;
+            // Size shrinks as it ages, with slight flicker
+            let flicker = rng.random_range(0.8..1.2);
+            particle.size = (3.0 + (1.0 - age_factor) * 5.0) * flicker;
         }
 
         // Remove dead particles
