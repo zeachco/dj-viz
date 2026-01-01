@@ -58,7 +58,7 @@ const CONFIG_TEMPLATE: &str = r#"# dj-viz configuration file
 #   [0.4, 0.9],  # BeatBars
 #   [0.3, 0.7],  # CrtPhosphor
 #   [0.5, 1.0],  # BlackHole
-#   [0.6, 1.0],  # GravityFlames
+#   [0.1, 0.6],  # GravityFlames
 #   [0.1, 0.4],  # FractalTree
 #   [0.3, 0.7],  # DancingSkeletons
 #   [0.2, 0.6],  # ShufflingSkeletons
@@ -160,7 +160,7 @@ pub const DEFAULT_VIZ_ENERGY_RANGES: &[[f32; 2]; 18] = &[
     [0.4, 0.9], // BeatBars
     [0.3, 0.7], // CrtPhosphor
     [0.5, 1.0], // BlackHole
-    [0.6, 1.0], // GravityFlames
+    [0.1, 0.6], // GravityFlames
     [0.0, 0.4], // FractalTree
     [0.1, 0.6], // DancingSkeletons
     [0.7, 1.0], // ShufflingSkeletons

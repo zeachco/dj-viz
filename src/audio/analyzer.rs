@@ -759,10 +759,14 @@ impl AudioAnalyzer {
 
     /// Detect break patterns: silence (no beats) for extended period
     /// Returns whether a break was detected
-    fn detect_break(&mut self, is_beat: bool, _current_energy: f32) -> bool {
+    fn detect_break(&mut self, is_beat: bool, current_energy: f32) -> bool {
         // Get thresholds from config
         let silence_threshold = self.detection_config.break_silence_frames();
         let cooldown_threshold = self.detection_config.break_cooldown_frames();
+
+        // Minimum energy required to consider break detection
+        // If energy is too low, we're in actual silence (no music), not a musical break
+        const MIN_ENERGY_FOR_BREAK: f32 = 0.05;
 
         // Decrement cooldown
         if self.break_cooldown > 0 {
@@ -777,7 +781,11 @@ impl AudioAnalyzer {
         }
 
         // Break detected when no beat for extended period and not in cooldown
-        if self.frames_since_beat >= silence_threshold && self.break_cooldown == 0 {
+        // Also require some minimum energy to distinguish from actual silence
+        if self.frames_since_beat >= silence_threshold
+            && self.break_cooldown == 0
+            && current_energy > MIN_ENERGY_FOR_BREAK
+        {
             self.break_cooldown = cooldown_threshold;
             self.frames_since_beat = 0; // Reset to avoid immediate re-trigger
             return true;

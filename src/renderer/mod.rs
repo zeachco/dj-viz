@@ -450,8 +450,12 @@ impl Renderer {
             let cooldown_frames = self.detection_config.cooldown_frames();
             let energy_drop_rate = self.detection_config.energy_drop_rate();
 
+            // Require bass to be high for viz changes (sync with kick drums)
+            const BASS_PEAK_THRESHOLD: f32 = 0.6;
+            let bass_is_peak = analysis.bass > BASS_PEAK_THRESHOLD;
+
             // Priority 1: Punch detection - major visual change
-            if analysis.punch_detected {
+            if analysis.punch_detected && bass_is_peak {
                 let (primary, overlays) =
                     self.select_for_energy_and_labels(&mut rng, analysis.energy, None);
                 let overlay_count = overlays.len();
@@ -506,8 +510,8 @@ impl Renderer {
                     }
                 }
             }
-            // Priority 4: Break detected - dramatic change
-            else if analysis.break_detected {
+            // Priority 4: Break detected - dramatic change (requires bass peak)
+            else if analysis.break_detected && bass_is_peak {
                 let (primary, overlays) =
                     self.select_for_energy_and_labels(&mut rng, self.tracked_energy, None);
                 self.current_idx = primary;
@@ -515,8 +519,8 @@ impl Renderer {
                 self.cooldown = cooldown_frames;
                 // println!("Break! Switched to {}", Self::visualization_name(primary));
             }
-            // Priority 5: Regular transition - existing behavior but energy-aware
-            else if analysis.transition_detected {
+            // Priority 5: Regular transition - existing behavior but energy-aware (requires bass peak)
+            else if analysis.transition_detected && bass_is_peak {
                 let (primary, overlays) =
                     self.select_for_energy_and_labels(&mut rng, self.tracked_energy, None);
                 self.current_idx = primary;
