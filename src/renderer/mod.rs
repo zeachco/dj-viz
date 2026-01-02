@@ -578,6 +578,53 @@ impl Renderer {
         println!("Debug visualization: {}", status);
     }
 
+    /// Toggle auto-cycling lock
+    pub fn toggle_lock(&mut self) {
+        self.locked = !self.locked;
+        let status = if self.locked { "LOCKED" } else { "UNLOCKED" };
+        println!("Auto-cycling: {}", status);
+    }
+
+    /// Check if auto-cycling is locked
+    pub fn is_locked(&self) -> bool {
+        self.locked
+    }
+
+    /// Get current primary visualization index
+    pub fn current_idx(&self) -> usize {
+        self.current_idx
+    }
+
+    /// Get current overlay indices
+    pub fn overlay_indices(&self) -> &[usize] {
+        &self.overlay_indices
+    }
+
+    /// Toggle a visualization as overlay (or remove if already overlay)
+    /// If it's the primary, this does nothing.
+    /// Returns the new overlay state.
+    pub fn toggle_overlay(&mut self, idx: usize) -> bool {
+        if idx >= self.visualizations.len() || idx == self.current_idx {
+            return false;
+        }
+
+        if let Some(pos) = self.overlay_indices.iter().position(|&i| i == idx) {
+            self.overlay_indices.remove(pos);
+            println!("Removed overlay: {}", Self::visualization_name(idx));
+            false
+        } else if self.overlay_indices.len() < 3 {
+            self.overlay_indices.push(idx);
+            println!("Added overlay: {}", Self::visualization_name(idx));
+            true
+        } else {
+            // Max 3 overlays, replace the oldest one
+            self.overlay_indices.remove(0);
+            self.overlay_indices.push(idx);
+            println!("Replaced overlay with: {}", Self::visualization_name(idx));
+            true
+        }
+    }
+
     /// Draw debug visualization (CrtNumbers) if visible
     pub fn draw_debug_viz(&self, draw: &Draw, bounds: Rect) {
         if self.debug_viz_visible {

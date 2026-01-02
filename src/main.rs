@@ -12,7 +12,9 @@ use std::cell::RefCell;
 use std::env;
 use nannou::winit::event::WindowEvent;
 use ui::bindings::{parse_key, Action};
+use ui::help_overlay::HelpOverlay;
 use ui::text_picker::{draw_text_picker, TextPickerState};
+use ui::viz_picker::{draw_viz_picker, VizPicker};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -33,6 +35,8 @@ struct Model {
     analyzer: AudioAnalyzer,
     renderer: Renderer,
     output_capture: OutputCapture,
+    viz_picker: VizPicker,
+    help_overlay: HelpOverlay,
     feedback: RefCell<FeedbackRenderer>,
     #[allow(dead_code)]
     screensaver_inhibitor: Option<utils::ScreensaverInhibitor>,
@@ -55,6 +59,8 @@ fn model(app: &App) -> Model {
         .new_window()
         .view(view)
         .key_pressed(key_pressed)
+        .mouse_pressed(mouse_pressed)
+        .mouse_wheel(mouse_wheel)
         .raw_event(raw_event)
         .resized(resized)
         .size(resolution.width, resolution.height);
@@ -113,6 +119,8 @@ fn model(app: &App) -> Model {
         analyzer: AudioAnalyzer::with_config(44100.0, detection_config.clone()),
         renderer: Renderer::with_cycling(detection_config, viz_energy_ranges),
         output_capture: OutputCapture::new(),
+        viz_picker: VizPicker::new(),
+        help_overlay: HelpOverlay::new(),
         feedback: RefCell::new(feedback),
         screensaver_inhibitor,
         phase_offset: 0.0,
@@ -233,6 +241,20 @@ fn view(app: &App, model: &Model, frame: Frame) {
         draw_text_picker(&search_draw, bounds, &model.output_capture);
         search_draw.to_frame(app, &frame).unwrap();
     }
+
+    // Draw viz picker overlay directly to frame
+    if model.viz_picker.active {
+        let picker_draw = app.draw();
+        draw_viz_picker(&picker_draw, bounds, &model.viz_picker);
+        picker_draw.to_frame(app, &frame).unwrap();
+    }
+
+    // Draw help overlay directly to frame
+    if model.help_overlay.visible {
+        let help_draw = app.draw();
+        model.help_overlay.draw(&help_draw, bounds, model.renderer.is_locked());
+        help_draw.to_frame(app, &frame).unwrap();
+    }
 }
 
 fn resized(app: &App, model: &mut Model, size: Vec2) {
@@ -260,12 +282,17 @@ fn key_pressed(app: &App, model: &mut Model, key: Key) {
         key,
         app.keys.mods.shift(),
         model.output_capture.search_active,
+        model.viz_picker.active,
     );
 
     match action {
         Some(Action::Quit) => app.quit(),
+        Some(Action::ShowHelp) => {
+            model.help_overlay.toggle();
+            model.viz_picker.hide(); // Close picker when showing help
+        }
 
-        // Search mode actions
+        // Search mode actions (audio device search)
         Some(Action::SearchCancel) => model.output_capture.cancel(),
         Some(Action::SearchMoveUp) => model.output_capture.move_up(),
         Some(Action::SearchMoveDown) => model.output_capture.move_down(),
@@ -287,11 +314,50 @@ fn key_pressed(app: &App, model: &mut Model, key: Key) {
             model.output_capture.cancel();
         }
 
+        // Viz picker mode actions
+        Some(Action::VizPickerShow) => {
+            model.help_overlay.hide();
+            model.viz_picker.update_active_states(
+                model.renderer.current_idx(),
+                model.renderer.overlay_indices(),
+            );
+            model.viz_picker.show();
+        }
+        Some(Action::VizPickerHide) => model.viz_picker.hide(),
+        Some(Action::VizPickerMoveUp) => model.viz_picker.move_up(),
+        Some(Action::VizPickerMoveDown) => model.viz_picker.move_down(),
+        Some(Action::VizPickerSelect) => {
+            if let Some(idx) = model.viz_picker.selected_viz_index() {
+                model.script_manager.deactivate();
+                if let Some(name) = model.renderer.set_visualization(idx) {
+                    model.renderer.show_notification(format!("[{}] {}", idx, name));
+                }
+                model.viz_picker.update_active_states(
+                    model.renderer.current_idx(),
+                    model.renderer.overlay_indices(),
+                );
+            }
+            model.viz_picker.hide();
+        }
+        Some(Action::VizPickerToggle) => {
+            if let Some(idx) = model.viz_picker.selected_viz_index() {
+                model.renderer.toggle_overlay(idx);
+                model.viz_picker.update_active_states(
+                    model.renderer.current_idx(),
+                    model.renderer.overlay_indices(),
+                );
+            }
+        }
+
         // Normal mode actions
         Some(Action::StartSearch) => model.output_capture.start_search(),
         Some(Action::ToggleDebugViz) => model.renderer.toggle_debug_viz(),
+        Some(Action::ToggleLock) => {
+            model.renderer.toggle_lock();
+            let status = if model.renderer.is_locked() { "LOCKED" } else { "UNLOCKED" };
+            model.renderer.show_notification(format!("Auto-cycling: {}", status));
+        }
         Some(Action::CycleNext) => {
-            // Deactivate script mode and cycle built-in visualizations
             model.script_manager.deactivate();
             model.renderer.cycle_next(&model.last_analysis);
         }
@@ -302,16 +368,73 @@ fn key_pressed(app: &App, model: &mut Model, key: Key) {
                 model.renderer.show_notification("No scripts found in scripts/".to_string());
             }
         }
-        Some(Action::SelectVisualization(idx)) => {
-            // Deactivate script mode and select built-in visualization
-            model.script_manager.deactivate();
-            if let Some(name) = model.renderer.set_visualization(idx) {
-                model
-                    .renderer
-                    .show_notification(format!("[{}] {}", idx, name));
-            }
-        }
 
         None => {} // Unhandled key
+    }
+}
+
+fn mouse_pressed(_app: &App, model: &mut Model, button: MouseButton) {
+    if !model.viz_picker.active {
+        return;
+    }
+
+    match button {
+        MouseButton::Left => {
+            // Select the visualization
+            if let Some(idx) = model.viz_picker.selected_viz_index() {
+                model.script_manager.deactivate();
+                if let Some(name) = model.renderer.set_visualization(idx) {
+                    model.renderer.show_notification(format!("[{}] {}", idx, name));
+                }
+                model.viz_picker.update_active_states(
+                    model.renderer.current_idx(),
+                    model.renderer.overlay_indices(),
+                );
+            }
+            model.viz_picker.hide();
+        }
+        MouseButton::Right => {
+            // Toggle as overlay
+            if let Some(idx) = model.viz_picker.selected_viz_index() {
+                model.renderer.toggle_overlay(idx);
+                model.viz_picker.update_active_states(
+                    model.renderer.current_idx(),
+                    model.renderer.overlay_indices(),
+                );
+            }
+        }
+        _ => {}
+    }
+}
+
+fn mouse_wheel(_app: &App, model: &mut Model, delta: MouseScrollDelta, _phase: TouchPhase) {
+    // Close help when scrolling
+    model.help_overlay.hide();
+
+    // If picker not active, show it first
+    if !model.viz_picker.active {
+        model.viz_picker.update_active_states(
+            model.renderer.current_idx(),
+            model.renderer.overlay_indices(),
+        );
+        model.viz_picker.show();
+    }
+
+    // Navigate based on scroll direction
+    match delta {
+        MouseScrollDelta::LineDelta(_, y) => {
+            if y > 0.0 {
+                model.viz_picker.move_up();
+            } else if y < 0.0 {
+                model.viz_picker.move_down();
+            }
+        }
+        MouseScrollDelta::PixelDelta(pos) => {
+            if pos.y > 10.0 {
+                model.viz_picker.move_up();
+            } else if pos.y < -10.0 {
+                model.viz_picker.move_down();
+            }
+        }
     }
 }

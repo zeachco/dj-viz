@@ -9,8 +9,9 @@ use nannou::prelude::*;
 pub enum Action {
     // App-level
     Quit,
+    ShowHelp,
 
-    // Search mode navigation
+    // Search mode navigation (audio device search)
     SearchCancel,
     SearchMoveUp,
     SearchMoveDown,
@@ -18,12 +19,20 @@ pub enum Action {
     SearchConfirm,
     SearchInput(char),
 
+    // Viz picker mode navigation
+    VizPickerShow,
+    VizPickerHide,
+    VizPickerMoveUp,
+    VizPickerMoveDown,
+    VizPickerSelect,
+    VizPickerToggle,
+
     // Normal mode
     StartSearch,
     ToggleDebugViz,
+    ToggleLock,
     CycleNext,
     CycleScript,
-    SelectVisualization(usize),
 }
 
 /// Convert a Key to a character (alphanumeric only)
@@ -79,13 +88,18 @@ pub fn key_to_char(key: Key, shift: bool) -> Option<char> {
 }
 
 /// Parse a key into an action based on current mode
-pub fn parse_key(key: Key, shift: bool, search_active: bool) -> Option<Action> {
+pub fn parse_key(key: Key, shift: bool, search_active: bool, viz_picker_active: bool) -> Option<Action> {
     // Global quit key
     if key == Key::Q {
         return Some(Action::Quit);
     }
 
-    // Search mode bindings
+    // Help toggle (works in all modes except search)
+    if !search_active && key == Key::H {
+        return Some(Action::ShowHelp);
+    }
+
+    // Search mode bindings (audio device search)
     if search_active {
         return match key {
             Key::Escape => Some(Action::SearchCancel),
@@ -97,31 +111,26 @@ pub fn parse_key(key: Key, shift: bool, search_active: bool) -> Option<Action> {
         };
     }
 
+    // Viz picker mode bindings
+    if viz_picker_active {
+        return match key {
+            Key::Escape => Some(Action::VizPickerHide),
+            Key::Up => Some(Action::VizPickerMoveUp),
+            Key::Down => Some(Action::VizPickerMoveDown),
+            Key::Return => Some(Action::VizPickerSelect),
+            Key::T => Some(Action::VizPickerToggle),
+            _ => None,
+        };
+    }
+
     // Normal mode bindings
     match key {
         Key::Slash => Some(Action::StartSearch),
         Key::D => Some(Action::ToggleDebugViz),
+        Key::L => Some(Action::ToggleLock),
         Key::Space => Some(Action::CycleNext),
         Key::S => Some(Action::CycleScript),
-        _ => parse_number_key(key, shift).map(Action::SelectVisualization),
-    }
-}
-
-/// Parse number keys (0-9, Shift+0-9) into visualization indices
-fn parse_number_key(key: Key, shift: bool) -> Option<usize> {
-    let shift_offset = if shift { 10 } else { 0 };
-
-    match key {
-        Key::Key0 => Some(shift_offset),
-        Key::Key1 => Some(1 + shift_offset),
-        Key::Key2 => Some(2 + shift_offset),
-        Key::Key3 => Some(3 + shift_offset),
-        Key::Key4 => Some(4 + shift_offset),
-        Key::Key5 => Some(5 + shift_offset),
-        Key::Key6 => Some(6 + shift_offset),
-        Key::Key7 => Some(7 + shift_offset),
-        Key::Key8 => Some(8 + shift_offset),
-        Key::Key9 => Some(9 + shift_offset),
+        Key::Up | Key::Down => Some(Action::VizPickerShow),
         _ => None,
     }
 }

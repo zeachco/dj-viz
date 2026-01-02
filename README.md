@@ -74,12 +74,26 @@ cargo run -- --audio-info  # Print audio device info
 
 | Key | Action |
 |-----|--------|
-| `Space` | Cycle visualization |
-| `0-9` | Select audio device (Shift+0-9 for devices 10-19) |
-| `/` | Open device search |
-| `q` | Exit application |
+| `h` | Show/hide keyboard shortcuts |
+| `q` | Quit |
 
-### Device Search
+### Visualization
+
+| Key | Action |
+|-----|--------|
+| `l` | Lock/unlock auto-cycling |
+| `Space` | Cycle to random visualization |
+| `Up/Down` | Open visualization picker / navigate |
+| `Scroll` | Open visualization picker / navigate |
+| `Enter` | Select visualization (in picker) |
+| `t` | Toggle visualization as overlay (in picker) |
+| `Left-click` | Select visualization (in picker) |
+| `Right-click` | Toggle as overlay (in picker) |
+| `Esc` | Close visualization picker |
+| `d` | Toggle debug overlay |
+| `s` | Cycle Rhai scripts |
+
+### Audio Device Search
 
 Press `/` to open an interactive device search interface:
 
