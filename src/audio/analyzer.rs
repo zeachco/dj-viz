@@ -7,6 +7,7 @@ use num_complex::Complex;
 use rustfft::{Fft, FftPlanner};
 use std::sync::Arc;
 
+use super::utils::KickDetector;
 use crate::utils::DetectionConfig;
 
 /// Number of frequency bands for visualization
@@ -80,6 +81,18 @@ pub struct AudioAnalysis {
     pub instrument_removed: bool,
     /// Weighted average frequency (spectral centroid in Hz)
     pub spectral_centroid: f32,
+
+    // Kick detection (multi-band onset detection)
+    /// Whether a kick drum was detected this frame
+    pub kick_detected: bool,
+    /// Confidence of kick detection (0-1, higher = more bands agreed)
+    pub kick_confidence: f32,
+    /// Time since last kick in seconds
+    pub kick_time_since: f32,
+    /// Band envelopes for kick detection [sub_bass, low_mid, attack]
+    pub kick_envelopes: [f32; 3],
+    /// Spectral flux per kick band [sub_bass, low_mid, attack]
+    pub kick_flux: [f32; 3],
 }
 
 impl Default for AudioAnalysis {
@@ -110,6 +123,12 @@ impl Default for AudioAnalysis {
             instrument_added: false,
             instrument_removed: false,
             spectral_centroid: 1000.0,
+            // Kick detection
+            kick_detected: false,
+            kick_confidence: 0.0,
+            kick_time_since: 1.0,
+            kick_envelopes: [0.0; 3],
+            kick_flux: [0.0; 3],
         }
     }
 }
@@ -191,6 +210,9 @@ pub struct AudioAnalyzer {
 
     // Detection configuration (from config file)
     detection_config: DetectionConfig,
+
+    // Kick detector (multi-band onset detection)
+    kick_detector: KickDetector,
 }
 
 impl AudioAnalyzer {
@@ -266,6 +288,8 @@ impl AudioAnalyzer {
             spectrum_max: 0.0,
             // Detection config
             detection_config,
+            // Kick detector
+            kick_detector: KickDetector::new(sample_rate, FFT_SIZE),
         }
     }
 
@@ -602,6 +626,13 @@ impl AudioAnalyzer {
         let (instrument_added, instrument_removed, spectral_centroid) =
             self.detect_instrument_changes(&bands_copy);
 
+        // Multi-band kick detection using full spectrum
+        let kick_detected = self.kick_detector.process(&self.spectrum, FRAME_DELTA);
+        let kick_confidence = self.kick_detector.confidence();
+        let kick_time_since = self.kick_detector.time_since_kick();
+        let kick_envelopes = self.kick_detector.band_envelopes();
+        let kick_flux = self.kick_detector.band_flux();
+
         // Compute aggregate values
         let bass = (self.smoothed_bands[0] + self.smoothed_bands[1]) / 2.0;
         let mids = (self.smoothed_bands[2] + self.smoothed_bands[3] + self.smoothed_bands[4]) / 3.0;
@@ -644,6 +675,12 @@ impl AudioAnalyzer {
             instrument_added,
             instrument_removed,
             spectral_centroid,
+            // Kick detection
+            kick_detected,
+            kick_confidence,
+            kick_time_since,
+            kick_envelopes,
+            kick_flux,
         };
 
         self.last_analysis.clone()

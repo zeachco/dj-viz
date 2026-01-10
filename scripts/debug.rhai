@@ -18,6 +18,7 @@ let tt_break = init("tt_break", 0.0);
 let tt_inst_add = init("tt_inst_add", 0.0);
 let tt_inst_rem = init("tt_inst_rem", 0.0);
 let tt_viz_chg = init("tt_viz_chg", 0.0);
+let tt_kick = init("tt_kick", 0.0);
 
 // Update trigger timers - set to fade_duration when triggered, count down otherwise
 if transition_detected { tt_transition = fade_duration; }
@@ -44,6 +45,10 @@ if viz_change_triggered { tt_viz_chg = fade_duration; }
 else { tt_viz_chg = max(0.0, tt_viz_chg - dt); }
 set("tt_viz_chg", tt_viz_chg);
 
+if kick_detected { tt_kick = fade_duration; }
+else { tt_kick = max(0.0, tt_kick - dt); }
+set("tt_kick", tt_kick);
+
 // === LAYOUT: Define visualization area below info panel ===
 // Info panel uses roughly 180 pixels at top, so visualization area is reduced
 let info_panel_height = 200.0;
@@ -56,7 +61,7 @@ let viz_area_center_y = (viz_area_top + viz_area_bottom) / 2.0;
 let margin = 20.0;
 let side_col_width = 140.0;  // Fixed width for left/right columns
 let meter_width = 30.0;
-let slider_height = 25.0;
+let slider_height = 10.0;
 
 // === BACKGROUND: 40% black overlay ===
 let bg_center_x = (bounds_left + bounds_right) / 2.0;
@@ -197,6 +202,56 @@ draw_vertical_meter(meter2_x, meter_y, meter_width, meter_h, rise_mapped, "RISE"
 let meter3_x = meter2_x + meter_width + meter_spacing;
 draw_vertical_meter(meter3_x, meter_y, meter_width, meter_h, energy_floor, "FLOOR", 0.15, 0.15);
 
+// === KICK DETECTION PANEL (below main meters) ===
+let kick_panel_y = meter_y + meter_h / 2.0 + 50.0;
+let kick_meter_h = viz_area_h * 0.12;
+let kick_meter_w = 22.0;
+let kick_spacing = (side_col_width - kick_meter_w * 3.0) / 4.0;
+
+// Kick band labels
+let kick_labels = ["SUB", "LO-M", "ATK"];
+let kick_hues = [0.0, 0.08, 0.55];  // Red for sub, orange for lo-mid, blue for attack
+
+// Draw kick band envelope meters with flux overlay
+for i in 0..3 {
+    let kx = col1_left + kick_spacing + kick_meter_w / 2.0 + (i * 1.0) * (kick_meter_w + kick_spacing);
+    let envelope = kick_envelopes[i];
+    let flux = kick_flux[i];
+
+    // Background
+    rect(kx, kick_panel_y, kick_meter_w, kick_meter_h, 0.12, 0.12, 0.15, 0.8);
+
+    // Envelope fill
+    let env_h = clamp(envelope, 0.0, 1.0) * kick_meter_h;
+    let env_y = kick_panel_y - kick_meter_h / 2.0 + env_h / 2.0;
+    let env_col = hsla(kick_hues[i], 0.7, 0.4, 0.8);
+    if env_h > 1.0 {
+        rect(kx, env_y, kick_meter_w - 4.0, env_h, env_col[0], env_col[1], env_col[2], env_col[3]);
+    }
+
+    // Flux indicator (bright flash on top when flux is high)
+    let flux_intensity = clamp(flux * 5.0, 0.0, 1.0);
+    if flux_intensity > 0.1 {
+        let flux_col = hsla(kick_hues[i], 0.9, 0.6 + flux_intensity * 0.3, flux_intensity);
+        let flux_h = kick_meter_h * 0.15;
+        rect(kx, kick_panel_y + kick_meter_h / 2.0 - flux_h / 2.0, kick_meter_w, flux_h, flux_col[0], flux_col[1], flux_col[2], flux_col[3]);
+    }
+
+    // Label
+    text(kx, kick_panel_y + kick_meter_h / 2.0 + 10.0, kick_labels[i], 9, 0.6, 0.6, 0.6, 1.0);
+}
+
+// Kick confidence bar
+let conf_bar_y = kick_panel_y + kick_meter_h / 2.0 + 28.0;
+let conf_bar_w = side_col_width - 20.0;
+rect(col1_left + side_col_width / 2.0, conf_bar_y, conf_bar_w, 8.0, 0.1, 0.1, 0.12, 0.7);
+let conf_fill_w = clamp(kick_confidence, 0.0, 1.0) * conf_bar_w;
+if conf_fill_w > 1.0 {
+    let conf_col = hsla(0.3 - kick_confidence * 0.3, 0.8, 0.5, 0.9);
+    rect(col1_left + side_col_width / 2.0 - (conf_bar_w - conf_fill_w) / 2.0, conf_bar_y, conf_fill_w, 6.0, conf_col[0], conf_col[1], conf_col[2], conf_col[3]);
+}
+text(col1_left + side_col_width / 2.0, conf_bar_y + 14.0, "KICK CONF", 9, 0.5, 0.5, 0.5, 1.0);
+
 // === COLUMN 2 (CENTER): Spectrum + Centroid ===
 // Centroid slider at bottom
 let slider_w = col2_w;
@@ -312,12 +367,13 @@ fn draw_bool_indicator(x, y, label, timer, fade_dur, indicator_size) {
 
 // Stack indicators vertically, aligned with spectrum height
 let bool_base_y = spec_y_base + spec_height - 10.0;
-draw_bool_indicator(bool_area_center_x, bool_base_y, "TRANSITION", tt_transition, fade_duration, indicator_size);
-draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing, "PUNCH", tt_punch, fade_duration, indicator_size);
-draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing * 2.0, "BREAK", tt_break, fade_duration, indicator_size);
-draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing * 3.0, "INST+", tt_inst_add, fade_duration, indicator_size);
-draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing * 4.0, "INST-", tt_inst_rem, fade_duration, indicator_size);
-draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing * 5.0, "VIZ CHG", tt_viz_chg, fade_duration, indicator_size);
+draw_bool_indicator(bool_area_center_x, bool_base_y, "KICK", tt_kick, fade_duration, indicator_size);
+draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing, "TRANSITION", tt_transition, fade_duration, indicator_size);
+draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing * 2.0, "PUNCH", tt_punch, fade_duration, indicator_size);
+draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing * 3.0, "BREAK", tt_break, fade_duration, indicator_size);
+draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing * 4.0, "INST+", tt_inst_add, fade_duration, indicator_size);
+draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing * 5.0, "INST-", tt_inst_rem, fade_duration, indicator_size);
+draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing * 6.0, "VIZ CHG", tt_viz_chg, fade_duration, indicator_size);
 
 // === CENTER: Geometry Patterns for All Bands ===
 let center_area_left = col1_right + margin;

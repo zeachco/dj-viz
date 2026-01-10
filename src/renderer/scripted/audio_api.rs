@@ -81,6 +81,27 @@ pub fn update_audio_in_scope(scope: &mut Scope, analysis: &AudioAnalysis, bounds
     scope.set_or_push("last_mark", analysis.last_mark as i64);
     scope.set_or_push("energy_floor", analysis.energy_floor as f64);
 
+    // Kick detection (multi-band onset detection)
+    scope.set_or_push("kick_detected", analysis.kick_detected);
+    scope.set_or_push("kick_confidence", analysis.kick_confidence as f64);
+    scope.set_or_push("kick_time_since", analysis.kick_time_since as f64);
+
+    // Kick band envelopes as array [sub_bass, low_mid, attack]
+    let kick_envelopes: rhai::Array = analysis
+        .kick_envelopes
+        .iter()
+        .map(|&e| Dynamic::from(e as f64))
+        .collect();
+    scope.set_or_push("kick_envelopes", kick_envelopes);
+
+    // Kick spectral flux as array [sub_bass, low_mid, attack]
+    let kick_flux: rhai::Array = analysis
+        .kick_flux
+        .iter()
+        .map(|&f| Dynamic::from(f as f64))
+        .collect();
+    scope.set_or_push("kick_flux", kick_flux);
+
     // Window bounds
     scope.set_or_push("bounds_w", bounds.w() as f64);
     scope.set_or_push("bounds_h", bounds.h() as f64);
