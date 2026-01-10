@@ -5,16 +5,16 @@ mod utils;
 
 use audio::{AudioAnalysis, AudioAnalyzer, OutputCapture, SourcePipe};
 use nannou::prelude::*;
+use nannou::winit::event::WindowEvent;
 use renderer::{FeedbackRenderer, Renderer, Resolution, ScriptManager};
-use utils::Config;
-use std::path::PathBuf;
 use std::cell::RefCell;
 use std::env;
-use nannou::winit::event::WindowEvent;
+use std::path::PathBuf;
 use ui::bindings::{parse_key, Action};
 use ui::help_overlay::HelpOverlay;
 use ui::text_picker::{draw_text_picker, TextPickerState};
 use ui::viz_picker::{draw_viz_picker, VizPicker};
+use utils::Config;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -63,7 +63,8 @@ fn model(app: &App) -> Model {
         .mouse_wheel(mouse_wheel)
         .raw_event(raw_event)
         .resized(resized)
-        .size(resolution.width, resolution.height);
+        .size(resolution.width, resolution.height)
+        .min_size(400, 400);
 
     if resolution.fullscreen {
         win = win.fullscreen();
@@ -253,7 +254,9 @@ fn view(app: &App, model: &Model, frame: Frame) {
     // Draw help overlay directly to frame
     if model.help_overlay.visible {
         let help_draw = app.draw();
-        model.help_overlay.draw(&help_draw, bounds, model.renderer.is_locked());
+        model
+            .help_overlay
+            .draw(&help_draw, bounds, model.renderer.is_locked());
         help_draw.to_frame(app, &frame).unwrap();
     }
 }
@@ -331,7 +334,9 @@ fn key_pressed(app: &App, model: &mut Model, key: Key) {
             if let Some(idx) = model.viz_picker.selected_viz_index() {
                 model.script_manager.deactivate();
                 if let Some(name) = model.renderer.set_visualization(idx) {
-                    model.renderer.show_notification(format!("[{}] {}", idx, name));
+                    model
+                        .renderer
+                        .show_notification(format!("[{}] {}", idx, name));
                 }
                 model.viz_picker.update_active_states(
                     model.renderer.current_idx(),
@@ -355,8 +360,14 @@ fn key_pressed(app: &App, model: &mut Model, key: Key) {
         Some(Action::ToggleDebugViz) => model.renderer.toggle_debug_viz(),
         Some(Action::ToggleLock) => {
             model.renderer.toggle_lock();
-            let status = if model.renderer.is_locked() { "LOCKED" } else { "UNLOCKED" };
-            model.renderer.show_notification(format!("Auto-cycling: {}", status));
+            let status = if model.renderer.is_locked() {
+                "LOCKED"
+            } else {
+                "UNLOCKED"
+            };
+            model
+                .renderer
+                .show_notification(format!("Auto-cycling: {}", status));
         }
         Some(Action::CycleNext) => {
             model.script_manager.deactivate();
@@ -364,9 +375,13 @@ fn key_pressed(app: &App, model: &mut Model, key: Key) {
         }
         Some(Action::CycleScript) => {
             if let Some(name) = model.script_manager.cycle_next() {
-                model.renderer.show_notification(format!("Script: {}", name));
+                model
+                    .renderer
+                    .show_notification(format!("Script: {}", name));
             } else {
-                model.renderer.show_notification("No scripts found in scripts/".to_string());
+                model
+                    .renderer
+                    .show_notification("No scripts found in scripts/".to_string());
             }
         }
 
@@ -385,7 +400,9 @@ fn mouse_pressed(_app: &App, model: &mut Model, button: MouseButton) {
             if let Some(idx) = model.viz_picker.selected_viz_index() {
                 model.script_manager.deactivate();
                 if let Some(name) = model.renderer.set_visualization(idx) {
-                    model.renderer.show_notification(format!("[{}] {}", idx, name));
+                    model
+                        .renderer
+                        .show_notification(format!("[{}] {}", idx, name));
                 }
                 model.viz_picker.update_active_states(
                     model.renderer.current_idx(),
