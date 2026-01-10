@@ -7,6 +7,7 @@ mod audio_api;
 mod draw_api;
 
 use crate::audio::AudioAnalysis;
+use crate::renderer::VizInfo;
 use audio_api::update_audio_in_scope;
 use draw_api::{register_draw_api, register_math_api, CommandQueue};
 use nannou::prelude::*;
@@ -162,9 +163,9 @@ impl ScriptManager {
     }
 
     /// Update the current script visualization
-    pub fn update(&mut self, analysis: &AudioAnalysis, bounds: Rect) {
+    pub fn update(&mut self, analysis: &AudioAnalysis, bounds: Rect, viz_info: &VizInfo) {
         if let Some(ref mut viz) = self.visualization {
-            viz.update(analysis, bounds);
+            viz.update(analysis, bounds, viz_info);
         }
     }
 
@@ -280,7 +281,7 @@ impl ScriptedVisualization {
     }
 
     /// Update the visualization with audio analysis
-    pub fn update(&mut self, analysis: &AudioAnalysis, bounds: Rect) {
+    pub fn update(&mut self, analysis: &AudioAnalysis, bounds: Rect, viz_info: &VizInfo) {
         self.frame_counter += 1;
         self.bounds = bounds;
 
@@ -297,6 +298,20 @@ impl ScriptedVisualization {
             bounds,
             self.frame_counter as i64,
         );
+
+        // Update visualization info in scope
+        self.scope
+            .set_or_push("viz_primary_name", viz_info.primary_name.clone());
+        self.scope
+            .set_or_push("viz_active_count", (1 + viz_info.overlay_names.len()) as i64);
+        self.scope
+            .set_or_push("viz_overlay_count", viz_info.overlay_names.len() as i64);
+        let overlay_names: rhai::Array = viz_info
+            .overlay_names
+            .iter()
+            .map(|n| Dynamic::from(n.clone()))
+            .collect();
+        self.scope.set_or_push("viz_overlay_names", overlay_names);
 
         // Update script_init flag (true on first frame after load/reload)
         self.scope.set_or_push("script_init", self.script_init);

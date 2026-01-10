@@ -166,7 +166,8 @@ fn update(app: &App, model: &mut Model, _update: Update) {
     let bounds = app.window_rect();
 
     model.renderer.update(&analysis, bounds);
-    model.script_manager.update(&analysis, bounds);
+    let viz_info = model.renderer.viz_info();
+    model.script_manager.update(&analysis, bounds, &viz_info);
 
     // Detect energy peak and flip zoom direction
     if analysis.energy >= 0.95 && model.prev_energy < 0.95 {

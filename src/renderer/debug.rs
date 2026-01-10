@@ -3,6 +3,7 @@
 //! Renders the debug.rhai script as an overlay on top of the primary visualization.
 
 use super::scripted::ScriptedVisualization;
+use super::VizInfo;
 use nannou::prelude::*;
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -43,7 +44,7 @@ impl DebugViz {
     }
 
     /// Update the debug visualization with audio analysis and bounds
-    pub fn update(&mut self, analysis: &AudioAnalysis, bounds: Rect) {
+    pub fn update(&mut self, analysis: &AudioAnalysis, bounds: Rect, viz_info: &VizInfo) {
         // Calculate FPS
         let now = Instant::now();
         let delta = now.duration_since(self.last_frame_time).as_secs_f32();
@@ -56,7 +57,7 @@ impl DebugViz {
         if let Some(ref mut script) = *self.debug_script.borrow_mut() {
             // Pass FPS to the script
             script.set_var("fps", self.display_fps as f64);
-            script.update(analysis, bounds);
+            script.update(analysis, bounds, viz_info);
         }
     }
 

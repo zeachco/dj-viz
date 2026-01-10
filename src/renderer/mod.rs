@@ -32,6 +32,13 @@ use rand::Rng;
 use crate::audio::AudioAnalysis;
 use crate::utils::DetectionConfig;
 
+/// Visualization info for debug display / scripts
+#[derive(Clone, Debug)]
+pub struct VizInfo {
+    pub primary_name: String,
+    pub overlay_names: Vec<String>,
+}
+
 /// Labels for categorizing visualizations that can be layered together
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum VisLabel {
@@ -538,7 +545,8 @@ impl Renderer {
         }
 
         // Always update debug viz (even if not visible, so it's ready when toggled)
-        self.debug_viz.update(analysis, bounds);
+        let viz_info = self.viz_info();
+        self.debug_viz.update(analysis, bounds, &viz_info);
     }
 
     /// Draw the primary visualization
@@ -598,6 +606,20 @@ impl Renderer {
     /// Get current overlay indices
     pub fn overlay_indices(&self) -> &[usize] {
         &self.overlay_indices
+    }
+
+    /// Get visualization info for debug display
+    pub fn viz_info(&self) -> VizInfo {
+        let overlay_names: Vec<String> = self
+            .overlay_indices
+            .iter()
+            .map(|&idx| Self::visualization_name(idx).to_string())
+            .collect();
+
+        VizInfo {
+            primary_name: Self::visualization_name(self.current_idx).to_string(),
+            overlay_names,
+        }
     }
 
     /// Toggle a visualization as overlay (or remove if already overlay)

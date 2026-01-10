@@ -69,10 +69,6 @@ let bg_center_y = (bounds_top + bounds_bottom) / 2.0;
 let bg_h = bounds_top - bounds_bottom;
 rect(bg_center_x, bg_center_y, bounds_w, bg_h, 0.0, 0.0, 0.0, 0.5);
 
-// === FPS Display (top left) - calculated from dt ===
-let estimated_fps = floor(1.0 / dt);
-let fps_text = "FPS: ~" + estimated_fps;
-text(bounds_left + 60.0, bounds_top - 30.0, fps_text, 24, 0.0, 0.8, 0.0, 1.0);
 
 // === TOP: Info Panel (from debug.rs) ===
 let info_top = bounds_top - 50.0;
@@ -170,19 +166,37 @@ let col2_w = col2_right - col2_left;
 // All groups have uniform dimensions and stack from bottom to top
 
 // Group layout constants
-let group_h = 100.0;           // Height of each instrument group
+let group_h = 140.0;           // Height of each instrument group
 let group_gap = 28.0;          // Gap between groups (includes room for title)
 let group_w = side_col_width;  // Width matches column
+let group_padding = 8.0;       // Padding inside group background
 let group_center_x = col1_left + group_w / 2.0;
 
 // Meter dimensions within groups
 let group_meter_w = 22.0;
-let group_meter_h = group_h - 45.0;  // Leave room for title + confidence bar
+let group_meter_h = group_h - 45.0 - group_padding * 2.0;  // Leave room for title + confidence bar + padding
 let group_meter_spacing = (group_w - group_meter_w * 3.0) / 4.0;
 
-// Helper: Calculate Y center for group N (0 = bottom-most)
-fn group_y(group_index, base_y, group_h, group_gap) {
-    base_y + group_h / 2.0 + (group_index * 1.0) * (group_h + group_gap)
+// Helper: Draw a group with background and title, returns content bounds
+// Returns: [center_x, center_y, content_top, content_bottom, content_left, content_right]
+fn draw_group(title, group_index, center_x, base_y, group_w, group_h, group_gap, group_padding) {
+    // Calculate group center Y
+    let center_y = base_y + group_h / 2.0 + (group_index * 1.0) * (group_h + group_gap);
+
+    // Draw background
+    rect(center_x, center_y, group_w, group_h, 0.1, 0.1, 0.1, 0.7);
+
+    // Draw title at top (inside padding)
+    let title_y = center_y + group_h / 2.0 - group_padding - 5.0;
+    text(center_x, title_y, title, 11, 0.8, 0.8, 0.8, 1.0);
+
+    // Calculate content bounds (below title, inside padding)
+    let content_top = title_y - 15.0;
+    let content_bottom = center_y - group_h / 2.0 + group_padding;
+    let content_left = center_x - group_w / 2.0 + group_padding;
+    let content_right = center_x + group_w / 2.0 - group_padding;
+
+    [center_x, center_y, content_top, content_bottom, content_left, content_right]
 }
 
 // Helper: Draw a vertical meter bar
@@ -217,14 +231,11 @@ let groups_base_y = viz_area_bottom + margin + slider_height + 10.0;
 // ─────────────────────────────────────────────────────────────
 // GROUP 0 (bottom): ENERGY - Overall energy metrics
 // ─────────────────────────────────────────────────────────────
-let energy_group_y = group_y(0, groups_base_y, group_h, group_gap);
-let energy_meter_y = energy_group_y + 10.0;
-
-// Group title
-text(group_center_x, energy_group_y + group_h / 2.0 - 5.0, "ENERGY", 11, 0.8, 0.8, 0.8, 1.0);
+let energy_bounds = draw_group("ENERGY", 0, group_center_x, groups_base_y, group_w, group_h, group_gap, group_padding);
+let energy_meter_y = (energy_bounds[2] + energy_bounds[3]) / 2.0;
 
 // Three meters: Energy, Rise, Floor
-let m1_x = col1_left + group_meter_spacing + group_meter_w / 2.0;
+let m1_x = energy_bounds[4] + group_meter_spacing + group_meter_w / 2.0;
 let m2_x = m1_x + group_meter_w + group_meter_spacing;
 let m3_x = m2_x + group_meter_w + group_meter_spacing;
 
@@ -236,19 +247,16 @@ draw_meter_bar(m3_x, energy_meter_y, group_meter_w, group_meter_h, energy_floor,
 // ─────────────────────────────────────────────────────────────
 // GROUP 1: KICK - Kick/drum detection
 // ─────────────────────────────────────────────────────────────
-let kick_group_y = group_y(1, groups_base_y, group_h, group_gap);
-let kick_meter_y = kick_group_y + 10.0;
-let kick_conf_y = kick_group_y - group_h / 2.0 + 12.0;
-
-// Group title
-text(group_center_x, kick_group_y + group_h / 2.0 - 5.0, "KICK", 11, 0.8, 0.8, 0.8, 1.0);
+let kick_bounds = draw_group("KICK", 1, group_center_x, groups_base_y, group_w, group_h, group_gap, group_padding);
+let kick_meter_y = (kick_bounds[2] + kick_bounds[3]) / 2.0 + 12.0;  // moved up for spacing
+let kick_conf_y = kick_bounds[3] + 2.0;  // moved down for spacing
 
 // Three meters: Sub, Lo-Mid, Attack with flux overlay
 let kick_labels = ["SUB", "LO-M", "ATK"];
 let kick_hues = [0.0, 0.08, 0.55];
 
 for i in 0..3 {
-    let kx = col1_left + group_meter_spacing + group_meter_w / 2.0 + (i * 1.0) * (group_meter_w + group_meter_spacing);
+    let kx = kick_bounds[4] + group_meter_spacing + group_meter_w / 2.0 + (i * 1.0) * (group_meter_w + group_meter_spacing);
     let envelope = kick_envelopes[i];
     let flux = kick_flux[i];
 
@@ -362,44 +370,83 @@ if spec_len > 0 {
 // Spectrum label
 text(slider_x, spec_y_base + spec_height + 12.0, "SPECTRUM", 12, 0.7, 0.7, 0.7, 1.0);
 
-// === COLUMN 3 (RIGHT): Boolean State Indicators ===
-let bool_area_center_x = (col3_left + col3_right) / 2.0;
-let bool_row_spacing = 24.0;
-let indicator_size = 14.0;
+// === COLUMN 3 (RIGHT): State & Graphics Groups ===
+// Mirrors left column structure - groups stack from bottom to top
+let col3_center_x = col3_left + side_col_width / 2.0;
 
-// Helper function for drawing boolean indicator
-fn draw_bool_indicator(x, y, label, timer, fade_dur, indicator_size) {
+// Helper function for drawing LED-style boolean indicator row
+fn draw_bool_indicator_row(x, y, label, timer, fade_dur, group_w) {
     let progress = timer / fade_dur;
     let is_on = progress > 0.0;
 
-    // Background circle
+    // LED rectangle (left side of row)
+    let indicator_x = x - group_w / 2.0 + 12.0;
+    let led_w = 8.0;
+    let led_h = 4.0;
+
     let bg_col = if is_on {
-        hsla(0.3, 0.8, 0.2 + progress * 0.4, 0.9)
+        hsla(0.3, 0.9, 0.3 + progress * 0.4, 0.95)
     } else {
-        [0.2, 0.15, 0.15, 0.7]
+        [0.15, 0.12, 0.12, 0.6]
     };
 
-    ellipse(x - 40.0, y, indicator_size, indicator_size, bg_col[0], bg_col[1], bg_col[2], bg_col[3]);
+    rect(indicator_x, y, led_w, led_h, bg_col[0], bg_col[1], bg_col[2], bg_col[3]);
 
-    // Glow when on
-    if is_on {
-        let glow = hsla(0.3, 0.6, 0.5, progress * 0.3);
-        ellipse(x - 40.0, y, indicator_size + 8.0, indicator_size + 8.0, glow[0], glow[1], glow[2], glow[3]);
-    }
-
-    // Label
-    text(x, y, label, 10, 0.7, 0.7, 0.7, 1.0);
+    // Label (right of indicator)
+    text(indicator_x + 35.0, y, label, 10, 0.7, 0.7, 0.7, 1.0);
 }
 
-// Stack indicators vertically, aligned with spectrum height
-let bool_base_y = spec_y_base + spec_height - 10.0;
-draw_bool_indicator(bool_area_center_x, bool_base_y, "KICK", tt_kick, fade_duration, indicator_size);
-draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing, "TRANSITION", tt_transition, fade_duration, indicator_size);
-draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing * 2.0, "PUNCH", tt_punch, fade_duration, indicator_size);
-draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing * 3.0, "BREAK", tt_break, fade_duration, indicator_size);
-draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing * 4.0, "INST+", tt_inst_add, fade_duration, indicator_size);
-draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing * 5.0, "INST-", tt_inst_rem, fade_duration, indicator_size);
-draw_bool_indicator(bool_area_center_x, bool_base_y - bool_row_spacing * 6.0, "VIZ CHG", tt_viz_chg, fade_duration, indicator_size);
+// ─────────────────────────────────────────────────────────────
+// GROUP 0 (bottom): DETECTION - Boolean state indicators
+// ─────────────────────────────────────────────────────────────
+let detect_bounds = draw_group("DETECTION", 0, col3_center_x, groups_base_y, side_col_width, group_h, group_gap, group_padding);
+let detect_row_spacing = 12.0;
+
+// Stack indicators from top of content area going down
+let detect_top_y = detect_bounds[2] - 5.0;
+draw_bool_indicator_row(col3_center_x, detect_top_y, "KICK", tt_kick, fade_duration, side_col_width);
+draw_bool_indicator_row(col3_center_x, detect_top_y - detect_row_spacing, "TRANS", tt_transition, fade_duration, side_col_width);
+draw_bool_indicator_row(col3_center_x, detect_top_y - detect_row_spacing * 2.0, "PUNCH", tt_punch, fade_duration, side_col_width);
+draw_bool_indicator_row(col3_center_x, detect_top_y - detect_row_spacing * 3.0, "BREAK", tt_break, fade_duration, side_col_width);
+draw_bool_indicator_row(col3_center_x, detect_top_y - detect_row_spacing * 4.0, "VIZ", tt_viz_chg, fade_duration, side_col_width);
+
+// ─────────────────────────────────────────────────────────────
+// GROUP 1: VISUALIZATIONS - Active viz info
+// ─────────────────────────────────────────────────────────────
+let viz_bounds = draw_group("VISUALIZATIONS", 1, col3_center_x, groups_base_y, side_col_width, group_h, group_gap, group_padding);
+
+// Primary visualization name
+let viz_primary_text = "primary: " + viz_primary_name;
+text(col3_center_x, viz_bounds[2] - 5.0, viz_primary_text, 10, 0.7, 0.7, 0.7, 1.0);
+
+// Active count (primary + overlays)
+let viz_count_text = "active: " + viz_active_count;
+text(col3_center_x, viz_bounds[2] - 20.0, viz_count_text, 10, 0.6, 0.6, 0.6, 1.0);
+
+// Overlay names if any
+if viz_overlay_count > 0 {
+    text(col3_center_x, viz_bounds[2] - 35.0, "overlays:", 9, 0.5, 0.5, 0.5, 1.0);
+    for i in 0..viz_overlay_count {
+        let overlay_name = viz_overlay_names[i];
+        text(col3_center_x, viz_bounds[2] - 48.0 - (i * 1.0) * 12.0, overlay_name, 9, 0.5, 0.5, 0.5, 1.0);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// GROUP 2 (top): SYSTEM - FPS, Resolution
+// ─────────────────────────────────────────────────────────────
+let sys_bounds = draw_group("SYSTEM", 2, col3_center_x, groups_base_y, side_col_width, group_h, group_gap, group_padding);
+
+// FPS display
+let estimated_fps = floor(1.0 / dt);
+let fps_text = "FPS: ~" + estimated_fps;
+text(col3_center_x, sys_bounds[2] - 5.0, fps_text, 11, 0.0, 0.8, 0.0, 1.0);
+
+// Resolution display (two lines)
+let screen_w_text = "screen_w: " + floor(bounds_w);
+let screen_h_text = "screen_h: " + floor(bounds_top - bounds_bottom);
+text(col3_center_x, sys_bounds[2] - 20.0, screen_w_text, 11, 0.6, 0.6, 0.6, 1.0);
+text(col3_center_x, sys_bounds[2] - 35.0, screen_h_text, 11, 0.6, 0.6, 0.6, 1.0);
 
 // === CENTER: Geometry Patterns for All Bands ===
 let center_area_left = col1_right + margin;
