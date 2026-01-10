@@ -166,91 +166,117 @@ let col2_right = col3_left - margin;
 let col2_center_x = (col2_left + col2_right) / 2.0;
 let col2_w = col2_right - col2_left;
 
-// === COLUMN 1 (LEFT): Energy, Rise, E.Floor Vertical Meters ===
-let meter_h = viz_area_h * 0.20;
-let meter_y = viz_area_bottom + margin + slider_height + meter_h / 2.0;
-let meter_spacing = (side_col_width - meter_width * 3.0) / 4.0;  // Spacing between 3 meters
+// === COLUMN 1 (LEFT): Instrument Detection Groups ===
+// All groups have uniform dimensions and stack from bottom to top
 
-// Helper function for drawing a vertical meter
-fn draw_vertical_meter(cx, cy, w, h, value, label, hue_base, hue_range) {
-    // Meter background
-    rect(cx, cy, w, h, 0.15, 0.15, 0.2, 0.8);
+// Group layout constants
+let group_h = 100.0;           // Height of each instrument group
+let group_gap = 28.0;          // Gap between groups (includes room for title)
+let group_w = side_col_width;  // Width matches column
+let group_center_x = col1_left + group_w / 2.0;
 
-    // Value fill
-    let fill_h = clamp(value, 0.0, 1.0) * h;
-    let fill_y = cy - h / 2.0 + fill_h / 2.0;
-    let hue = hue_base - value * hue_range;
-    let col = hsla(hue, 0.8, 0.5, 0.9);
-    if fill_h > 1.0 {
-        rect(cx, fill_y, w - 4.0, fill_h, col[0], col[1], col[2], col[3]);
-    }
+// Meter dimensions within groups
+let group_meter_w = 22.0;
+let group_meter_h = group_h - 45.0;  // Leave room for title + confidence bar
+let group_meter_spacing = (group_w - group_meter_w * 3.0) / 4.0;
 
-    // Label
-    text(cx, cy + h / 2.0 + 12.0, label, 10, 0.7, 0.7, 0.7, 1.0);
+// Helper: Calculate Y center for group N (0 = bottom-most)
+fn group_y(group_index, base_y, group_h, group_gap) {
+    base_y + group_h / 2.0 + (group_index * 1.0) * (group_h + group_gap)
 }
 
-// Energy meter
-let meter1_x = col1_left + meter_spacing + meter_width / 2.0;
-draw_vertical_meter(meter1_x, meter_y, meter_width, meter_h, energy, "ENERGY", 0.3, 0.3);
+// Helper: Draw a vertical meter bar
+fn draw_meter_bar(cx, cy, w, h, value, label, hue) {
+    // Background
+    rect(cx, cy, w, h, 0.12, 0.12, 0.15, 0.8);
+    // Value fill
+    let fill_h = clamp(value, 0.0, 1.0) * h;
+    if fill_h > 1.0 {
+        let fill_y = cy - h / 2.0 + fill_h / 2.0;
+        let col = hsla(hue, 0.7, 0.4, 0.9);
+        rect(cx, fill_y, w - 4.0, fill_h, col[0], col[1], col[2], col[3]);
+    }
+    // Label below
+    text(cx, cy - h / 2.0 - 10.0, label, 9, 0.6, 0.6, 0.6, 1.0);
+}
 
-// Rise meter (map -1..1 to 0..1)
+// Helper: Draw confidence bar at bottom of group
+fn draw_confidence_bar(cx, cy, w, value, label) {
+    rect(cx, cy, w, 8.0, 0.1, 0.1, 0.12, 0.7);
+    let fill_w = clamp(value, 0.0, 1.0) * w;
+    if fill_w > 1.0 {
+        let col = hsla(0.3 - value * 0.3, 0.8, 0.5, 0.9);
+        rect(cx - (w - fill_w) / 2.0, cy, fill_w, 6.0, col[0], col[1], col[2], col[3]);
+    }
+    text(cx, cy - 12.0, label, 9, 0.5, 0.5, 0.5, 1.0);
+}
+
+// Base Y for stacking groups (starts above centroid slider area)
+let groups_base_y = viz_area_bottom + margin + slider_height + 10.0;
+
+// ─────────────────────────────────────────────────────────────
+// GROUP 0 (bottom): ENERGY - Overall energy metrics
+// ─────────────────────────────────────────────────────────────
+let energy_group_y = group_y(0, groups_base_y, group_h, group_gap);
+let energy_meter_y = energy_group_y + 10.0;
+
+// Group title
+text(group_center_x, energy_group_y + group_h / 2.0 - 5.0, "ENERGY", 11, 0.8, 0.8, 0.8, 1.0);
+
+// Three meters: Energy, Rise, Floor
+let m1_x = col1_left + group_meter_spacing + group_meter_w / 2.0;
+let m2_x = m1_x + group_meter_w + group_meter_spacing;
+let m3_x = m2_x + group_meter_w + group_meter_spacing;
+
+draw_meter_bar(m1_x, energy_meter_y, group_meter_w, group_meter_h, energy, "NRG", 0.3);
 let rise_mapped = (rise_rate + 1.0) / 2.0;
-let meter2_x = meter1_x + meter_width + meter_spacing;
-draw_vertical_meter(meter2_x, meter_y, meter_width, meter_h, rise_mapped, "RISE", 0.6, 0.6);
+draw_meter_bar(m2_x, energy_meter_y, group_meter_w, group_meter_h, rise_mapped, "RISE", 0.6);
+draw_meter_bar(m3_x, energy_meter_y, group_meter_w, group_meter_h, energy_floor, "FLR", 0.15);
 
-// E.Floor meter
-let meter3_x = meter2_x + meter_width + meter_spacing;
-draw_vertical_meter(meter3_x, meter_y, meter_width, meter_h, energy_floor, "FLOOR", 0.15, 0.15);
+// ─────────────────────────────────────────────────────────────
+// GROUP 1: KICK - Kick/drum detection
+// ─────────────────────────────────────────────────────────────
+let kick_group_y = group_y(1, groups_base_y, group_h, group_gap);
+let kick_meter_y = kick_group_y + 10.0;
+let kick_conf_y = kick_group_y - group_h / 2.0 + 12.0;
 
-// === KICK DETECTION PANEL (below main meters) ===
-let kick_panel_y = meter_y + meter_h / 2.0 + 50.0;
-let kick_meter_h = viz_area_h * 0.12;
-let kick_meter_w = 22.0;
-let kick_spacing = (side_col_width - kick_meter_w * 3.0) / 4.0;
+// Group title
+text(group_center_x, kick_group_y + group_h / 2.0 - 5.0, "KICK", 11, 0.8, 0.8, 0.8, 1.0);
 
-// Kick band labels
+// Three meters: Sub, Lo-Mid, Attack with flux overlay
 let kick_labels = ["SUB", "LO-M", "ATK"];
-let kick_hues = [0.0, 0.08, 0.55];  // Red for sub, orange for lo-mid, blue for attack
+let kick_hues = [0.0, 0.08, 0.55];
 
-// Draw kick band envelope meters with flux overlay
 for i in 0..3 {
-    let kx = col1_left + kick_spacing + kick_meter_w / 2.0 + (i * 1.0) * (kick_meter_w + kick_spacing);
+    let kx = col1_left + group_meter_spacing + group_meter_w / 2.0 + (i * 1.0) * (group_meter_w + group_meter_spacing);
     let envelope = kick_envelopes[i];
     let flux = kick_flux[i];
 
     // Background
-    rect(kx, kick_panel_y, kick_meter_w, kick_meter_h, 0.12, 0.12, 0.15, 0.8);
+    rect(kx, kick_meter_y, group_meter_w, group_meter_h, 0.12, 0.12, 0.15, 0.8);
 
     // Envelope fill
-    let env_h = clamp(envelope, 0.0, 1.0) * kick_meter_h;
-    let env_y = kick_panel_y - kick_meter_h / 2.0 + env_h / 2.0;
-    let env_col = hsla(kick_hues[i], 0.7, 0.4, 0.8);
+    let env_h = clamp(envelope, 0.0, 1.0) * group_meter_h;
     if env_h > 1.0 {
-        rect(kx, env_y, kick_meter_w - 4.0, env_h, env_col[0], env_col[1], env_col[2], env_col[3]);
+        let env_y = kick_meter_y - group_meter_h / 2.0 + env_h / 2.0;
+        let env_col = hsla(kick_hues[i], 0.7, 0.4, 0.8);
+        rect(kx, env_y, group_meter_w - 4.0, env_h, env_col[0], env_col[1], env_col[2], env_col[3]);
     }
 
-    // Flux indicator (bright flash on top when flux is high)
+    // Flux indicator (flash at top when flux is high)
     let flux_intensity = clamp(flux * 5.0, 0.0, 1.0);
     if flux_intensity > 0.1 {
         let flux_col = hsla(kick_hues[i], 0.9, 0.6 + flux_intensity * 0.3, flux_intensity);
-        let flux_h = kick_meter_h * 0.15;
-        rect(kx, kick_panel_y + kick_meter_h / 2.0 - flux_h / 2.0, kick_meter_w, flux_h, flux_col[0], flux_col[1], flux_col[2], flux_col[3]);
+        let flux_h = group_meter_h * 0.15;
+        rect(kx, kick_meter_y + group_meter_h / 2.0 - flux_h / 2.0, group_meter_w, flux_h, flux_col[0], flux_col[1], flux_col[2], flux_col[3]);
     }
 
-    // Label
-    text(kx, kick_panel_y + kick_meter_h / 2.0 + 10.0, kick_labels[i], 9, 0.6, 0.6, 0.6, 1.0);
+    // Label below
+    text(kx, kick_meter_y - group_meter_h / 2.0 - 10.0, kick_labels[i], 9, 0.6, 0.6, 0.6, 1.0);
 }
 
-// Kick confidence bar
-let conf_bar_y = kick_panel_y + kick_meter_h / 2.0 + 28.0;
-let conf_bar_w = side_col_width - 20.0;
-rect(col1_left + side_col_width / 2.0, conf_bar_y, conf_bar_w, 8.0, 0.1, 0.1, 0.12, 0.7);
-let conf_fill_w = clamp(kick_confidence, 0.0, 1.0) * conf_bar_w;
-if conf_fill_w > 1.0 {
-    let conf_col = hsla(0.3 - kick_confidence * 0.3, 0.8, 0.5, 0.9);
-    rect(col1_left + side_col_width / 2.0 - (conf_bar_w - conf_fill_w) / 2.0, conf_bar_y, conf_fill_w, 6.0, conf_col[0], conf_col[1], conf_col[2], conf_col[3]);
-}
-text(col1_left + side_col_width / 2.0, conf_bar_y + 14.0, "KICK CONF", 9, 0.5, 0.5, 0.5, 1.0);
+// Confidence bar at bottom
+draw_confidence_bar(group_center_x, kick_conf_y, group_w - 20.0, kick_confidence, "CONF");
 
 // === COLUMN 2 (CENTER): Spectrum + Centroid ===
 // Centroid slider at bottom
