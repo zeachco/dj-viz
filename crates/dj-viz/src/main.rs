@@ -1,4 +1,5 @@
 mod audio;
+mod plugin_loader;
 mod renderer;
 mod ui;
 mod utils;
@@ -6,7 +7,7 @@ mod utils;
 use audio::{AudioAnalysis, AudioAnalyzer, OutputCapture, SourcePipe};
 use nannou::prelude::*;
 use nannou::winit::event::WindowEvent;
-use renderer::{FeedbackRenderer, Renderer, Resolution, ScriptManager};
+use renderer::{FeedbackRenderer, Renderer, Resolution};
 use std::cell::RefCell;
 use std::env;
 use std::path::PathBuf;

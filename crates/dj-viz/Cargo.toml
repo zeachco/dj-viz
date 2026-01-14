@@ -1,0 +1,23 @@
+[package]
+name = "dj-viz"
+version = "0.3.0"
+edition = "2021"
+
+[dependencies]
+dj-viz-api = { path = "../dj-viz-api" }
+
+nannou = { workspace = true }
+cpal = { workspace = true }
+rustfft = { workspace = true }
+num-complex = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+dirs = { workspace = true }
+rand = { workspace = true }
+bytemuck = { workspace = true }
+wgpu-types = { workspace = true }
+libloading = { workspace = true }
+notify = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = ["Win32_System_Power"] }
