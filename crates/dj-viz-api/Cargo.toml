@@ -1,0 +1,8 @@
+[package]
+name = "dj-viz-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nannou = { workspace = true }
+abi_stable = { workspace = true }
